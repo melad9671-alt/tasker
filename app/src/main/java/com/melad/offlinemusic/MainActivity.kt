@@ -70,6 +70,7 @@ import androidx.media3.session.SessionToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.produceState
 import com.google.common.util.concurrent.ListenableFuture
@@ -687,32 +688,56 @@ private fun OfflineMusicApp(controller: MediaController?) {
 
 @Composable
 private fun SplashScreen() {
-    Box(
-        Modifier.fillMaxSize().background(Color(0xFF100D0D)),
-        contentAlignment = Alignment.Center
-    ) {
+    val drop = remember { Animatable(-170f) }
+    val spin = remember { Animatable(0f) }
+    var landed by remember { mutableStateOf(false) }
+    val expansion by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (landed) 1f else 0f,
+        animationSpec = tween(560, easing = FastOutSlowInEasing),
+        label = "logoExpansion"
+    )
+    LaunchedEffect(Unit) {
+        launch { spin.animateTo(720f, animationSpec = tween(1120, easing = FastOutSlowInEasing)) }
+        drop.animateTo(
+            targetValue = 0f,
+            animationSpec = keyframes {
+                durationMillis = 1120
+                -170f at 0
+                20f at 650
+                -13f at 820
+                0f at 1010 using FastOutSlowInEasing
+            }
+        )
+        landed = true
+    }
+    val iconSize = androidx.compose.ui.unit.lerp(62.dp, 118.dp, expansion)
+    val corner = (50f - expansion * 20f).coerceIn(28f, 50f)
+    Box(Modifier.fillMaxSize().background(Color(0xFF100D0D)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(animationSpec = tween(850)) + scaleIn(initialScale = 0.55f, animationSpec = tween(850))
+            Box(
+                Modifier.size(iconSize).offset(y = drop.value.dp)
+                    .graphicsLayer { rotationZ = spin.value; scaleX = 0.78f + expansion * 0.22f; scaleY = 0.78f + expansion * 0.22f }
+                    .clip(RoundedCornerShape(corner.dp)).background(Color(0xFFE5393F)),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    Modifier.size(118.dp).clip(RoundedCornerShape(34.dp)).background(Color(0xFFE5393F)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(Modifier.size(76.dp).clip(CircleShape).background(Color(0xFFB91F2A)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
-                    }
+                Box(Modifier.size(76.dp * expansion.coerceAtLeast(0.25f)).clip(CircleShape).background(Color(0xFFB91F2A)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp * expansion.coerceAtLeast(0.35f)))
                 }
             }
             Spacer(Modifier.height(24.dp))
-            Text("OFFLINE MUSIC", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-            Spacer(Modifier.height(7.dp))
-            Text("YOUR MUSIC. YOUR WORLD.", color = Color(0xFFFF777B), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            AnimatedVisibility(
+                visible = landed,
+                enter = fadeIn(tween(650)) + slideInVertically(animationSpec = tween(650, easing = FastOutSlowInEasing), initialOffsetY = { it / 2 })
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("OFFLINE MUSIC", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(7.dp))
+                    Text("YOUR MUSIC. YOUR WORLD.", color = Color(0xFFFF777B), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
-
 private fun formatTime(ms: Long): String {
     val total = (ms.coerceAtLeast(0L) / 1000L).toInt()
     return "%d:%02d".format(total / 60, total % 60)
