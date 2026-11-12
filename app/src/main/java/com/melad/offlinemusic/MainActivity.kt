@@ -10,6 +10,10 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.core.tween
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
@@ -158,6 +163,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
         mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet())
     }
     var tab by remember { mutableStateOf("Songs") }
+    var selectedGroup by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
     var currentId by remember { mutableStateOf<String?>(null) }
     var playing by remember { mutableStateOf(false) }
@@ -173,6 +179,12 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var playlistName by remember { mutableStateOf("") }
     var playlistNames by remember { mutableStateOf(prefs.getStringSet("playlist_names", emptySet())?.toSet() ?: emptySet()) }
     var recentIds by remember { mutableStateOf(prefs.getString("recent_ids", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()) }
+    var splashVisible by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        delay(1750)
+        splashVisible = false
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -259,6 +271,9 @@ private fun OfflineMusicApp(controller: MediaController?) {
             onSurface = Color(0xFFF4F7F4)
         )
     ) {
+        if (splashVisible) {
+            SplashScreen()
+        } else {
         Scaffold(
             containerColor = Color(0xFF090D0B),
             bottomBar = {
@@ -273,7 +288,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     ).forEach { item ->
                         NavigationBarItem(
                             selected = tab == item.first,
-                            onClick = { tab = item.first },
+                            onClick = { tab = item.first; selectedGroup = null },
                             icon = { Icon(item.second, contentDescription = item.third) },
                             label = { Text(item.third) }
                         )
@@ -352,6 +367,64 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             }
                         }
                     }
+                } else if ((tab == "Albums" || tab == "Artists") && selectedGroup != null) {
+                    val group = selectedGroup!!
+                    val groupTracks = if (tab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { selectedGroup = null }) {
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(group, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (tab == "Albums") "Album" else "Artist", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text("${groupTracks.size} songs", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFF251817)).padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF3A2424)), contentAlignment = Alignment.Center) {
+                            Icon(if (tab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(38.dp))
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(group, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text("${groupTracks.size} songs in your library", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Songs", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { groupTracks.firstOrNull()?.let { playList(groupTracks, it) } }) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                            Text("Play all")
+                        }
+                    }
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 14.dp)) {
+                        items(groupTracks, key = { it.id }) { track ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                                    .background(if (currentId == track.id.toString()) Color(0xFF2A2020) else Color(0xFF151B18))
+                                    .clickable { playList(groupTracks, track) }
+                                    .padding(horizontal = 10.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AlbumArtwork(track.artworkUri, Modifier.size(48.dp).clip(RoundedCornerShape(9.dp)))
+                                Spacer(Modifier.width(11.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                    Text(if (tab == "Albums") track.artist else track.album, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text(formatTime(track.duration), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                                IconButton(onClick = { toggleFavorite(track) }) {
+                                    Icon(Icons.Filled.Favorite, contentDescription = "Favorite", tint = if (favorites.contains(track.id.toString())) Color(0xFFFF5A5F) else Color.Gray)
+                                }
+                            }
+                        }
+                    }
                 } else if (tab == "Albums" || tab == "Artists") {
                     val groups = if (tab == "Albums") tracks.map { it.album }.distinct().sorted()
                     else tracks.map { it.artist }.distinct().sorted()
@@ -359,22 +432,20 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         items(groups) { group ->
                             val groupTracks = if (tab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
                             Card(
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    groupTracks.firstOrNull()?.let { playList(groupTracks, it) }
-                                },
+                                modifier = Modifier.fillMaxWidth().clickable { selectedGroup = group },
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFF151B18)),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF26372B)), contentAlignment = Alignment.Center) {
-                                        Icon(if (tab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFF1ED760))
+                                    Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF352222)), contentAlignment = Alignment.Center) {
+                                        Icon(if (tab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(group, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text(groupTracks.size.toString() + " tracks", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
                                     }
-                                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play", tint = Color(0xFF1ED760))
+                                    Icon(Icons.Filled.ArrowBack, contentDescription = "Open", tint = Color.LightGray, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -548,6 +619,35 @@ private fun OfflineMusicApp(controller: MediaController?) {
                 },
                 dismissButton = { TextButton(onClick = { showPlayer = false }) { Text("Close") } }
             )
+        }
+        }
+    }
+}
+
+@Composable
+private fun SplashScreen() {
+    Box(
+        Modifier.fillMaxSize().background(Color(0xFF100D0D)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(animationSpec = tween(850)) + scaleIn(initialScale = 0.55f, animationSpec = tween(850))
+            ) {
+                Box(
+                    Modifier.size(118.dp).clip(RoundedCornerShape(34.dp)).background(Color(0xFFE5393F)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(Modifier.size(76.dp).clip(CircleShape).background(Color(0xFFB91F2A)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+            Text("OFFLINE MUSIC", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(7.dp))
+            Text("YOUR MUSIC. YOUR WORLD.", color = Color(0xFFFF777B), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
         }
     }
 }
