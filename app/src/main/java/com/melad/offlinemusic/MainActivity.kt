@@ -532,7 +532,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(tab, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(pageTab, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
                         Text(filtered.size.toString() + " tracks", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
                     }
