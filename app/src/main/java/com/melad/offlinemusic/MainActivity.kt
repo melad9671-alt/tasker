@@ -487,7 +487,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                         items((0 until controller.mediaItemCount).toList()) { index ->
                             val item = controller.getMediaItemAt(index)
-                            Row(Modifier.fillMaxWidth().clickable { controller.seekToMediaItem(index); controller.play(); showQueue = false }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.fillMaxWidth().clickable { controller.seekTo(index, 0L); controller.play(); showQueue = false }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(item.mediaMetadata.title?.toString() ?: "Unknown track", modifier = Modifier.weight(1f), maxLines = 1)
                                 if (index == controller.currentMediaItemIndex) Text("Playing", color = Color(0xFF1ED760))
                             }
