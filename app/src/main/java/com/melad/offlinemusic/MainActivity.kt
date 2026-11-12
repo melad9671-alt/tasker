@@ -15,6 +15,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
@@ -445,40 +446,44 @@ private fun OfflineMusicApp(controller: MediaController?) {
                 } else if ((pageTab == "Albums" || pageTab == "Artists") && pageGroup != null) {
                     val group = pageGroup!!
                     val groupTracks = if (pageTab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { selectedGroup = null }) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(group, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(if (pageTab == "Albums") "Album" else "Artist", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text("${groupTracks.size} songs", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFF251817)).padding(18.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF3A2424)), contentAlignment = Alignment.Center) {
-                            Icon(if (pageTab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(38.dp))
-                        }
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(group, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text("${groupTracks.size} songs in your library", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Songs", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { groupTracks.firstOrNull()?.let { playList(groupTracks, it) } }) {
-                            Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                            Text("Play all")
-                        }
-                    }
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 14.dp)) {
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { selectedGroup = null }) {
+                                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(group, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(if (pageTab == "Albums") "Album" else "Artist", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("${groupTracks.size} songs", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFF251817)).padding(18.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF3A2424)), contentAlignment = Alignment.Center) {
+                                    Icon(if (pageTab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(38.dp))
+                                }
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(group, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text("${groupTracks.size} songs in your library", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Songs", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = { groupTracks.firstOrNull()?.let { playList(groupTracks, it) } }) {
+                                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                                    Text("Play all")
+                                }
+                            }
+                        }
                         items(groupTracks, key = { it.id }) { track ->
                             Row(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
