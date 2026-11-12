@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -17,6 +18,7 @@ import androidx.compose.animation.core.tween
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.documentfile.provider.DocumentFile
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +35,8 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Search
@@ -95,47 +99,46 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun audioPermission(): String =
-    if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
-    else Manifest.permission.READ_EXTERNAL_STORAGE
-
-private fun hasAudioPermission(context: Context): Boolean =
-    ContextCompat.checkSelfPermission(context, audioPermission()) == PackageManager.PERMISSION_GRANTED
-
-private fun loadTracks(context: Context): List<Track> {
-    val result = mutableListOf<Track>()
-    val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-    val projection = arrayOf(
-        MediaStore.Audio.Media._ID,
-        MediaStore.Audio.Media.TITLE,
-        MediaStore.Audio.Media.ARTIST,
-        MediaStore.Audio.Media.ALBUM,
-        MediaStore.Audio.Media.DURATION,
-        MediaStore.Audio.Media.ALBUM_ID
-    )
-    val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-    val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
-    context.contentResolver.query(collection, projection, selection, null, sortOrder)?.use { cursor ->
-        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-        val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-        val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-        val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
-        val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-        val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(idCol)
-            result += Track(
-                id = id,
-                title = cursor.getString(titleCol) ?: "Unknown title",
-                artist = cursor.getString(artistCol)?.takeUnless { it == "<unknown>" } ?: "Unknown artist",
-                album = cursor.getString(albumCol)?.takeUnless { it == "<unknown>" } ?: "Unknown album",
-                duration = cursor.getLong(durationCol),
-                uri = Uri.withAppendedPath(collection, id.toString()),
-                artworkUri = Uri.parse("content://media/external/audio/albumart/${cursor.getLong(albumIdCol)}")
-            )
+private fun loadTracks(context: Context, treeUri: Uri): List<Track> {
+    val root = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
+    val files = mutableListOf<DocumentFile>()
+    fun collect(folder: DocumentFile) {
+        folder.listFiles().forEach { file ->
+            if (file.isDirectory) collect(file)
+            else {
+                val name = file.name.orEmpty().lowercase()
+                val audioExtension = listOf(".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma", ".aiff").any { name.endsWith(it) }
+                if (audioExtension || file.type?.startsWith("audio/") == true) files += file
+            }
         }
     }
-    return result
+    collect(root)
+    return files.mapNotNull { file ->
+        runCatching {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, file.uri)
+                val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                    ?.takeIf { it.isNotBlank() } ?: file.name?.substringBeforeLast('.') ?: "Unknown title"
+                val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                    ?.takeIf { it.isNotBlank() } ?: "Unknown artist"
+                val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                    ?.takeIf { it.isNotBlank() } ?: "Unknown album"
+                val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                Track(
+                    id = file.uri.toString().hashCode().toLong(),
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    duration = duration,
+                    uri = file.uri,
+                    artworkUri = null
+                )
+            } finally {
+                retriever.release()
+            }
+        }.getOrNull()
+    }.sortedBy { it.title.lowercase() }
 }
 
 private fun Track.toMediaItem(): MediaItem =
@@ -157,7 +160,7 @@ private fun Track.toMediaItem(): MediaItem =
 private fun OfflineMusicApp(controller: MediaController?) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("offline_music", Context.MODE_PRIVATE) }
-    var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
+    var folderUri by remember { mutableStateOf(prefs.getString("music_folder_uri", null)?.let(Uri::parse)) }
     var tracks by remember { mutableStateOf(emptyList<Track>()) }
     var favorites by remember {
         mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet())
@@ -186,17 +189,24 @@ private fun OfflineMusicApp(controller: MediaController?) {
         splashVisible = false
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> permissionGranted = granted }
-
-    LaunchedEffect(Unit) {
-        if (!permissionGranted) permissionLauncher.launch(audioPermission())
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            folderUri = uri
+            prefs.edit().putString("music_folder_uri", uri.toString()).apply()
+            tab = "Songs"
+            selectedGroup = null
+        }
     }
 
-    LaunchedEffect(permissionGranted) {
-        if (permissionGranted) {
-            tracks = withContext(Dispatchers.IO) { runCatching { loadTracks(context) }.getOrDefault(emptyList()) }
+    LaunchedEffect(folderUri) {
+        tracks = if (folderUri == null) emptyList() else withContext(Dispatchers.IO) {
+            runCatching { loadTracks(context, folderUri!!) }.getOrDefault(emptyList())
         }
     }
 
@@ -284,7 +294,8 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Triple("Artists", Icons.Filled.Person, "Artists"),
                         Triple("Favorites", Icons.Filled.Favorite, "Favorites"),
                         Triple("Recent", Icons.Filled.Repeat, "Recent"),
-                        Triple("Playlists", Icons.Filled.LibraryMusic, "Playlists")
+                        Triple("Playlists", Icons.Filled.LibraryMusic, "Playlists"),
+                        Triple("Settings", Icons.Filled.Settings, "Settings")
                     ).forEach { item ->
                         NavigationBarItem(
                             selected = tab == item.first,
@@ -324,7 +335,55 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     shape = RoundedCornerShape(18.dp)
                 )
                 Spacer(Modifier.height(12.dp))
-                if (!permissionGranted) {
+                if (tab == "Settings") {
+                    Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(18.dp))
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151B18)), shape = RoundedCornerShape(18.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(28.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Music folder", fontWeight = FontWeight.Bold)
+                                    Text("Only scan songs inside this folder", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            Text(
+                                if (folderUri == null) "No folder selected yet" else "A music folder is selected. The app scans audio files inside it and its subfolders only.",
+                                color = Color.LightGray,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(onClick = { folderPicker.launch(folderUri) }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (folderUri == null) "Choose music folder" else "Change music folder")
+                            }
+                            if (folderUri != null) {
+                                TextButton(onClick = {
+                                    folderUri = null
+                                    prefs.edit().remove("music_folder_uri").apply()
+                                    tracks = emptyList()
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Clear selected folder") }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text("Your audio files stay on your device. The app does not upload them.", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                } else if (folderUri == null) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(top = 36.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(52.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Choose your music folder", fontWeight = FontWeight.Bold)
+                        Text("Offline Music will read songs only from the folder you select.", color = Color.LightGray)
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = { folderPicker.launch(null) }) { Text("Choose folder") }
+                    }
+                } else if (tracks.isEmpty() && tab != "Settings") {
                     Column(
                         Modifier.fillMaxWidth().padding(top = 36.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -342,9 +401,10 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFF1ED760), modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(12.dp))
                             Text("No music found", fontWeight = FontWeight.Bold)
-                            Text("Add audio files to your device and refresh the library.", color = Color.LightGray)
+                            Text("No audio files found in the selected folder.", color = Color.LightGray)
                             Spacer(Modifier.height(12.dp))
-                            TextButton(onClick = { tracks = loadTracks(context) }) { Text("Refresh library") }
+                            TextButton(onClick = { folderUri?.let { uri -> tracks = loadTracks(context, uri) } }) { Text("Refresh folder") }
+                            TextButton(onClick = { tab = "Settings" }) { Text("Change music folder") }
                         }
                     }
                 } else if (tab == "Playlists") {
