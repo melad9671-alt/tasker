@@ -383,25 +383,13 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Spacer(Modifier.height(16.dp))
                         Button(onClick = { folderPicker.launch(null) }) { Text("Choose folder") }
                     }
-                } else if (tracks.isEmpty() && tab != "Settings") {
-                    Column(
-                        Modifier.fillMaxWidth().padding(top = 36.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFF1ED760), modifier = Modifier.size(52.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Text("Let Offline Music find your audio", fontWeight = FontWeight.Bold)
-                        Text("Your files stay on this device. Nothing is uploaded.", color = Color.LightGray)
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = { permissionLauncher.launch(audioPermission()) }) { Text("Allow audio access") }
-                    }
                 } else if (tracks.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFF1ED760), modifier = Modifier.size(48.dp))
+                            Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(12.dp))
-                            Text("No music found", fontWeight = FontWeight.Bold)
-                            Text("No audio files found in the selected folder.", color = Color.LightGray)
+                            Text("No music found in this folder", fontWeight = FontWeight.Bold)
+                            Text("Add your songs here, or choose a different folder in Settings.", color = Color.LightGray)
                             Spacer(Modifier.height(12.dp))
                             TextButton(onClick = { folderUri?.let { uri -> tracks = loadTracks(context, uri) } }) { Text("Refresh folder") }
                             TextButton(onClick = { tab = "Settings" }) { Text("Change music folder") }
