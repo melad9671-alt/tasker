@@ -168,9 +168,11 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var showPlayer by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
+    var trackToAdd by remember { mutableStateOf<Track?>(null) }
+    var playlistRefresh by remember { mutableIntStateOf(0) }
     var playlistName by remember { mutableStateOf("") }
     var playlistNames by remember { mutableStateOf(prefs.getStringSet("playlist_names", emptySet())?.toSet() ?: emptySet()) }
-    var recentIds by remember { mutableStateOf(prefs.getStringSet("recent_ids", emptySet())?.toList()?.asReversed() ?: emptyList()) }
+    var recentIds by remember { mutableStateOf(prefs.getString("recent_ids", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -235,7 +237,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
         controller.play()
         val recent = (listOf(selected.id.toString()) + recentIds).distinct().take(100)
         recentIds = recent
-        prefs.edit().putStringSet("recent_ids", recent.toSet()).apply()
+        prefs.edit().putString("recent_ids", recent.joinToString(",")).apply()
         showPlayer = true
     }
 
@@ -399,6 +401,9 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                     Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                                     Text(track.artist + " • " + track.album, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
                                 }
+                                IconButton(onClick = { trackToAdd = track }) {
+                                    Icon(Icons.Filled.LibraryMusic, contentDescription = "Add to playlist", tint = Color.LightGray)
+                                }
                                 IconButton(onClick = { toggleFavorite(track) }) {
                                     Icon(
                                         Icons.Filled.Favorite,
@@ -435,6 +440,27 @@ private fun OfflineMusicApp(controller: MediaController?) {
         }
 
 
+        if (trackToAdd != null) {
+            AlertDialog(
+                onDismissRequest = { trackToAdd = null },
+                title = { Text("Add to playlist") },
+                text = {
+                    if (playlistNames.isEmpty()) Text("Create a playlist first.")
+                    else Column {
+                        playlistNames.toList().sorted().forEach { name ->
+                            TextButton(onClick = {
+                                val key = "playlist_$name"
+                                val ids = prefs.getStringSet(key, emptySet())?.toSet() ?: emptySet()
+                                prefs.edit().putStringSet(key, ids + trackToAdd!!.id.toString()).apply()
+                                playlistRefresh++
+                                trackToAdd = null
+                            }, modifier = Modifier.fillMaxWidth()) { Text(name) }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { trackToAdd = null }) { Text("Close") } }
+            )
+        }
         if (showCreatePlaylist) {
             AlertDialog(
                 onDismissRequest = { showCreatePlaylist = false },
