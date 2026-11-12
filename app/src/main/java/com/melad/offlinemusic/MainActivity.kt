@@ -12,6 +12,9 @@ import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
@@ -341,7 +344,17 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     shape = RoundedCornerShape(18.dp)
                 )
                 Spacer(Modifier.height(12.dp))
-                if (tab == "Settings") {
+                AnimatedContent(
+                    targetState = tab to selectedGroup,
+                    transitionSpec = {
+                        (fadeIn(tween(300)) + slideInVertically(tween(300), initialOffsetY = { it / 14 })) togetherWith
+                            (fadeOut(tween(180)) + slideOutVertically(tween(180), targetOffsetY = { -it / 18 }))
+                    },
+                    label = "libraryPageTransition"
+                ) { page ->
+                    val pageTab = page.first
+                    val pageGroup = page.second
+                    if (pageTab == "Settings") {
                     Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(18.dp))
                     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151B18)), shape = RoundedCornerShape(18.dp)) {
@@ -409,7 +422,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             TextButton(onClick = { tab = "Settings" }) { Text("Change music folder") }
                         }
                     }
-                } else if (tab == "Playlists") {
+                } else if (pageTab == "Playlists") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Your playlists", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
@@ -429,16 +442,16 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             }
                         }
                     }
-                } else if ((tab == "Albums" || tab == "Artists") && selectedGroup != null) {
-                    val group = selectedGroup!!
-                    val groupTracks = if (tab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
+                } else if ((pageTab == "Albums" || pageTab == "Artists") && pageGroup != null) {
+                    val group = pageGroup!!
+                    val groupTracks = if (pageTab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { selectedGroup = null }) {
                             Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                         }
                         Column(Modifier.weight(1f)) {
                             Text(group, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(if (tab == "Albums") "Album" else "Artist", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                            Text(if (pageTab == "Albums") "Album" else "Artist", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
                         }
                         Text("${groupTracks.size} songs", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
                     }
@@ -448,7 +461,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF3A2424)), contentAlignment = Alignment.Center) {
-                            Icon(if (tab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(38.dp))
+                            Icon(if (pageTab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(38.dp))
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
@@ -478,7 +491,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 Spacer(Modifier.width(11.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                    Text(if (tab == "Albums") track.artist else track.album, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                    Text(if (pageTab == "Albums") track.artist else track.album, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Text(formatTime(track.duration), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                                 IconButton(onClick = { toggleFavorite(track) }) {
@@ -487,12 +500,12 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             }
                         }
                     }
-                } else if (tab == "Albums" || tab == "Artists") {
-                    val groups = if (tab == "Albums") tracks.map { it.album }.distinct().sorted()
+                } else if (pageTab == "Albums" || pageTab == "Artists") {
+                    val groups = if (pageTab == "Albums") tracks.map { it.album }.distinct().sorted()
                     else tracks.map { it.artist }.distinct().sorted()
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(groups) { group ->
-                            val groupTracks = if (tab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
+                            val groupTracks = if (pageTab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
                             Card(
                                 modifier = Modifier.fillMaxWidth().clickable { selectedGroup = group },
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFF151B18)),
@@ -500,7 +513,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             ) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF352222)), contentAlignment = Alignment.Center) {
-                                        Icon(if (tab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
+                                        Icon(if (pageTab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
@@ -547,6 +560,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             }
                         }
                     }
+                }
                 }
                 if (currentTrack != null && !showPlayer) {
                     Row(
