@@ -12,9 +12,15 @@ import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -100,47 +106,36 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun loadTracks(context: Context, treeUri: Uri): List<Track> {
-    val root = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
-    val files = mutableListOf<DocumentFile>()
-    fun collect(folder: DocumentFile) {
-        folder.listFiles().forEach { file ->
-            if (file.isDirectory) collect(file)
+    val root = runCatching { DocumentFile.fromTreeUri(context, treeUri) }.getOrNull() ?: return emptyList()
+    val files = linkedMapOf<String, DocumentFile>()
+    val pending = ArrayDeque<DocumentFile>()
+    pending.add(root)
+    while (pending.isNotEmpty()) {
+        val folder = pending.removeFirst()
+        val children = runCatching { folder.listFiles().toList() }.getOrDefault(emptyList())
+        children.forEach { file ->
+            if (file.isDirectory) pending.add(file)
             else {
                 val name = file.name.orEmpty().lowercase()
-                val audioExtension = listOf(".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma", ".aiff").any { name.endsWith(it) }
-                if (audioExtension || file.type?.startsWith("audio/") == true) files += file
+                val extensions = listOf(".mp3", ".m4a", ".m4b", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma", ".aiff", ".aif", ".3gp", ".amr")
+                val isAudio = extensions.any { name.endsWith(it) } || file.type?.startsWith("audio/", ignoreCase = true) == true
+                if (isAudio) files[file.uri.toString()] = file
             }
         }
     }
-    collect(root)
-    return files.mapNotNull { file ->
-        runCatching {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(context, file.uri)
-                val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
-                    ?.takeIf { it.isNotBlank() } ?: file.name?.substringBeforeLast('.') ?: "Unknown title"
-                val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
-                    ?.takeIf { it.isNotBlank() } ?: "Unknown artist"
-                val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
-                    ?.takeIf { it.isNotBlank() } ?: "Unknown album"
-                val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                Track(
-                    id = file.uri.toString().hashCode().toLong(),
-                    title = title,
-                    artist = artist,
-                    album = album,
-                    duration = duration,
-                    uri = file.uri,
-                    artworkUri = null
-                )
-            } finally {
-                retriever.release()
-            }
-        }.getOrNull()
+    return files.values.map { file ->
+        val fallbackTitle = file.name?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Unknown title"
+        val retriever = MediaMetadataRetriever()
+        val opened = runCatching { retriever.setDataSource(context, file.uri); true }.getOrDefault(false)
+        fun metadata(key: Int): String? = if (opened) runCatching { retriever.extractMetadata(key)?.takeIf { it.isNotBlank() } }.getOrNull() else null
+        val title = metadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: fallbackTitle
+        val artist = metadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "Unknown artist"
+        val album = metadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: "Unknown album"
+        val duration = metadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        runCatching { retriever.release() }
+        Track(file.uri.toString().hashCode().toLong(), title, artist, album, duration, file.uri, null)
     }.sortedBy { it.title.lowercase() }
 }
-
 private fun Track.toMediaItem(): MediaItem =
     MediaItem.Builder()
         .setMediaId(id.toString())
@@ -162,6 +157,8 @@ private fun OfflineMusicApp(controller: MediaController?) {
     val prefs = remember { context.getSharedPreferences("offline_music", Context.MODE_PRIVATE) }
     var folderUri by remember { mutableStateOf(prefs.getString("music_folder_uri", null)?.let(Uri::parse)) }
     var tracks by remember { mutableStateOf(emptyList<Track>()) }
+    var scanning by remember { mutableStateOf(false) }
+    var refreshRequest by remember { mutableIntStateOf(0) }
     var favorites by remember {
         mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet())
     }
@@ -185,7 +182,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var splashVisible by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        delay(1750)
+        delay(2450)
         splashVisible = false
     }
 
@@ -204,9 +201,17 @@ private fun OfflineMusicApp(controller: MediaController?) {
         }
     }
 
-    LaunchedEffect(folderUri) {
-        tracks = if (folderUri == null) emptyList() else withContext(Dispatchers.IO) {
-            runCatching { loadTracks(context, folderUri!!) }.getOrDefault(emptyList())
+    LaunchedEffect(folderUri, refreshRequest) {
+        val selectedUri = folderUri
+        if (selectedUri == null) {
+            tracks = emptyList()
+            scanning = false
+        } else {
+            scanning = true
+            tracks = withContext(Dispatchers.IO) {
+                runCatching { loadTracks(context, selectedUri) }.getOrDefault(emptyList())
+            }
+            scanning = false
         }
     }
 
@@ -308,7 +313,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
             }
         ) { padding ->
             Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp)
+                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp).animateContentSize(animationSpec = tween(360, easing = FastOutSlowInEasing))
             ) {
                 Spacer(Modifier.height(22.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -383,6 +388,14 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Spacer(Modifier.height(16.dp))
                         Button(onClick = { folderPicker.launch(null) }) { Text("Choose folder") }
                     }
+                } else if (scanning) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFF1ED760))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Scanning your music folder…", color = Color.LightGray)
+                        }
+                    }
                 } else if (tracks.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -391,7 +404,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             Text("No music found in this folder", fontWeight = FontWeight.Bold)
                             Text("Add your songs here, or choose a different folder in Settings.", color = Color.LightGray)
                             Spacer(Modifier.height(12.dp))
-                            TextButton(onClick = { folderUri?.let { uri -> tracks = loadTracks(context, uri) } }) { Text("Refresh folder") }
+                            TextButton(onClick = { refreshRequest++ }) { Text("Refresh folder") }
                             TextButton(onClick = { tab = "Settings" }) { Text("Change music folder") }
                         }
                     }
