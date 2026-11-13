@@ -155,7 +155,7 @@ private fun Track.toMediaItem(): MediaItem =
                 .setArtist(artist)
                 .setAlbumTitle(album)
                 .setArtworkUri(artworkUri)
-                .setArtworkData(artworkData, "image/*")
+                .setArtworkData(artworkData, null)
                 .build()
         )
         .build()
