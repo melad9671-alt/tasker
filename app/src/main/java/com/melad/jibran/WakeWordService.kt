@@ -167,33 +167,9 @@ class WakeWordService : Service() {
     }
 
     private fun tryHandleBackgroundCommand(raw: String): Boolean {
-        if (tryHandleTorchCommand(raw)) return true
-        val command = normalize(raw)
-        val musicMarker = listOf("youtube music", "يوتيوب ميوزيك", "يوتيوب ميوزك").firstOrNull { command.contains(it) }
-        if (musicMarker != null) {
-            val query = extractQuery(raw, musicMarker)
-            val url = if (query.isBlank()) "https://music.youtube.com" else "https://music.youtube.com/search?q=" + URLEncoder.encode(query, "UTF-8")
-            openExternal(url)
-            speak(if (query.isBlank()) "فتحت يوتيوب ميوزيك" else "بحثت لك عن " + query)
-            return true
-        }
-        val youtubeMarker = listOf("youtube", "يوتيوب").firstOrNull { command.contains(it) }
-        if (youtubeMarker != null) {
-            val query = extractQuery(raw, youtubeMarker)
-            val url = if (query.isBlank()) "https://www.youtube.com" else "https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8")
-            openExternal(url)
-            speak(if (query.isBlank()) "فتحت يوتيوب" else "بحثت لك عن " + query)
-            return true
-        }
-        val audioMarker = listOf("audiomack", "اوديو ماك").firstOrNull { command.contains(it) }
-        if (audioMarker != null) {
-            val query = extractQuery(raw, audioMarker)
-            val url = if (query.isBlank()) "https://audiomack.com" else "https://audiomack.com/search?q=" + URLEncoder.encode(query, "UTF-8")
-            openExternal(url)
-            speak(if (query.isBlank()) "فتحت أوديو ماك" else "بحثت لك عن " + query)
-            return true
-        }
-        return false
+        // Keep device-level commands in the service. Route all media commands through
+        // MainActivity so "search" and "play" share one consistent intent handler.
+        return tryHandleTorchCommand(raw)
     }
 
     private fun extractQuery(raw: String, marker: String): String {
