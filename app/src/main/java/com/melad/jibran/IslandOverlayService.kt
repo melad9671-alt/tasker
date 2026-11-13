@@ -8,7 +8,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadata
 import android.media.session.MediaController
-import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Build
 import android.os.IBinder
@@ -22,34 +21,42 @@ class IslandOverlayService : Service() {
         const val ACTION_NOTIFICATION = "com.melad.jibran.ISLAND_NOTIFICATION"
         private const val CHANNEL = "dynamic_island_service"
         private const val NOTIF_ID = 9301
+        @Volatile var isRunning = false
+            private set
     }
+
     private lateinit var wm: WindowManager
     private var root: FrameLayout? = null
     private var card: LinearLayout? = null
     private var titleView: TextView? = null
     private var subView: TextView? = null
+    private var controls: LinearLayout? = null
     private var expanded = false
     private var currentController: MediaController? = null
-    private var notificationTitle = ""
-    private var notificationText = ""
+    private var collapseTask: Runnable? = null
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_NOTIFICATION) {
-                notificationTitle = intent.getStringExtra("title").orEmpty()
-                notificationText = intent.getStringExtra("text").orEmpty()
-                showExpanded(notificationTitle.ifBlank { "إشعار جديد" }, notificationText, 5000)
+                val title = intent.getStringExtra("title").orEmpty()
+                val text = intent.getStringExtra("text").orEmpty()
+                if (title.isNotBlank() || text.isNotBlank()) {
+                    showExpanded(title.ifBlank { "إشعار جديد" }, text, 5000, false)
+                }
             }
         }
     }
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         createChannel()
         startForeground(NOTIF_ID, NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("Dynamic Island شغالة")
-            .setContentText("اضغط على الكبسولة لفتحها")
+            .setContentTitle("Dynamic Island تعمل")
+            .setContentText("خدمة الكبسولة الذكية")
             .setOngoing(true).build())
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val filter = IntentFilter(ACTION_NOTIFICATION)
@@ -61,23 +68,27 @@ class IslandOverlayService : Service() {
             addAction(Intent.ACTION_POWER_DISCONNECTED)
         })
     }
+
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_POWER_CONNECTED) showExpanded("Charging ⚡", "تم توصيل الشاحن", 3200)
+            if (intent?.action == Intent.ACTION_POWER_CONNECTED) showExpanded("تم توصيل الشاحن", "جاري شحن الهاتف ⚡", 3000, false)
             else collapse()
         }
     }
+
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             val channel = NotificationChannel(CHANNEL, "Dynamic Island", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
+
     private fun makeShape(color: Int, radius: Int) = GradientDrawable().apply {
         setColor(color)
         cornerRadius = dp(radius).toFloat()
-        setStroke(dp(1), 0xFF25252B.toInt())
+        setStroke(dp(1), 0xFF292D36.toInt())
     }
+
     private fun makeText(value: String, size: Int, color: Int, bold: Boolean) = TextView(this).apply {
         text = value
         textSize = size.toFloat()
@@ -87,6 +98,7 @@ class IslandOverlayService : Service() {
         maxLines = 2
         ellipsize = android.text.TextUtils.TruncateAt.END
     }
+
     private fun createOverlay() {
         if (root != null) return
         val host = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
@@ -94,49 +106,54 @@ class IslandOverlayService : Service() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(9), dp(7), dp(9), dp(7))
-            background = null
         }
-        // Tiny camera-like dot. The wider transparent host is the invisible touch zone.
         val dot = View(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.BLACK) }
         }
         content.addView(dot, LinearLayout.LayoutParams(dp(25), dp(25)))
-        val title = makeText("", 12, Color.WHITE, true).apply { visibility = View.GONE }
-        val subtitle = makeText("", 10, 0xFFBDBDBD.toInt(), false).apply { visibility = View.GONE }
-        titleView = title
-        subView = subtitle
-        content.addView(title)
-        content.addView(subtitle)
-        val controls = LinearLayout(this).apply { gravity = Gravity.CENTER; orientation = LinearLayout.HORIZONTAL }
+        titleView = makeText("", 12, Color.WHITE, true).apply { visibility = View.GONE }
+        subView = makeText("", 10, 0xFFBDBDBD.toInt(), false).apply { visibility = View.GONE }
+        content.addView(titleView)
+        content.addView(subView)
+
+        controls = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+        }
         fun control(symbol: String, action: () -> Unit) {
-            controls.addView(makeText(symbol, 18, Color.WHITE, true).apply {
-                setPadding(dp(12), dp(4), dp(12), dp(4))
+            controls?.addView(makeText(symbol, 17, Color.WHITE, true).apply {
+                setPadding(dp(13), dp(5), dp(13), dp(5))
                 setOnClickListener { action() }
             })
         }
         control("⏮") { currentController?.transportControls?.skipToPrevious(); refreshMedia() }
-        control("▶ / Ⅱ") {
-            val state = currentController?.playbackState?.state
-            if (state == PlaybackState.STATE_PLAYING) currentController?.transportControls?.pause()
-            else currentController?.transportControls?.play()
+        control("▶") {
+            val c = currentController ?: return@control
+            if (c.playbackState?.state == PlaybackState.STATE_PLAYING) c.transportControls.pause()
+            else c.transportControls.play()
             refreshMedia()
         }
         control("⏭") { currentController?.transportControls?.skipToNext(); refreshMedia() }
-        controls.visibility = View.GONE
         content.addView(controls)
         host.addView(content, FrameLayout.LayoutParams(dp(35), dp(32), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         host.setOnClickListener {
-            if (expanded) collapse() else {
+            if (expanded) {
+                collapse()
+            } else {
                 refreshMedia()
-                val metadata = currentController?.metadata
-                showExpanded(
-                    metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "Dynamic Island",
-                    metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "اضغط للتحكم في الموسيقى",
-                    0
-                )
+                val c = currentController
+                val metadata = c?.metadata
+                val hasTrack = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().isNotBlank()
+                if (c != null && hasTrack) {
+                    val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
+                    showExpanded(metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
+                        artist.ifBlank { "يتم تشغيل الوسائط" }, 0, true)
+                } else {
+                    showExpanded("مفيش موسيقى شغالة", "شغّل أغنية وهتظهر بياناتها هنا", 2200, false)
+                }
             }
         }
-        // Child controls become visible only when expanded; in idle the host remains transparent.
         card = content
         root = host
         val params = WindowManager.LayoutParams(
@@ -152,36 +169,45 @@ class IslandOverlayService : Service() {
         try { wm.addView(host, params) } catch (_: Exception) { root = null }
         collapse()
     }
-    private fun showExpanded(title: String, subtitle: String, duration: Long) {
+
+    private fun showExpanded(title: String, subtitle: String, duration: Long, showControls: Boolean) {
         val host = root ?: return
+        collapseTask?.let { host.removeCallbacks(it) }
         expanded = true
         titleView?.text = title
         subView?.text = subtitle
         titleView?.visibility = View.VISIBLE
-        subView?.visibility = View.VISIBLE
+        subView?.visibility = if (subtitle.isBlank()) View.GONE else View.VISIBLE
         card?.getChildAt(0)?.visibility = View.GONE
-        card?.getChildAt(3)?.visibility = View.VISIBLE
+        controls?.visibility = if (showControls && currentController != null) View.VISIBLE else View.GONE
         card?.background = makeShape(Color.BLACK, 27)
         val cardParams = card?.layoutParams as? FrameLayout.LayoutParams
         cardParams?.width = dp(214)
-        cardParams?.height = dp(90)
+        cardParams?.height = dp(if (showControls && currentController != null) 112 else 82)
         cardParams?.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         if (cardParams != null) card?.layoutParams = cardParams
         val params = host.layoutParams as WindowManager.LayoutParams
         params.width = dp(230)
-        params.height = dp(100)
+        params.height = dp(if (showControls && currentController != null) 122 else 92)
         try { wm.updateViewLayout(host, params) } catch (_: Exception) {}
-        if (duration > 0) host.postDelayed({ if (expanded) collapse() }, duration)
+        if (duration > 0) {
+            val task = Runnable { if (expanded) collapse() }
+            collapseTask = task
+            host.postDelayed(task, duration)
+        }
     }
+
     private fun collapse() {
         val host = root ?: return
+        collapseTask?.let { host.removeCallbacks(it) }
+        collapseTask = null
         expanded = false
         titleView?.text = ""
         subView?.text = ""
         titleView?.visibility = View.GONE
         subView?.visibility = View.GONE
         card?.getChildAt(0)?.visibility = View.VISIBLE
-        card?.getChildAt(3)?.visibility = View.GONE
+        controls?.visibility = View.GONE
         card?.background = null
         val cardParams = card?.layoutParams as? FrameLayout.LayoutParams
         cardParams?.width = dp(30)
@@ -193,27 +219,37 @@ class IslandOverlayService : Service() {
         params.height = dp(48)
         try { wm.updateViewLayout(host, params) } catch (_: Exception) {}
     }
+
     private fun refreshMedia() {
         try {
-            val manager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
+            val manager = getSystemService(MEDIA_SESSION_SERVICE) as android.media.session.MediaSessionManager
             val active = manager.getActiveSessions(ComponentName(this, IslandNotificationListener::class.java))
-            currentController = active.firstOrNull()
-            val c = currentController ?: return
-            if (expanded) {
-                val m = c.metadata
-                titleView?.text = m?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "الموسيقى"
-                subView?.text = m?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+            currentController = active.firstOrNull { controller ->
+                controller.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().isNotBlank()
             }
-        } catch (_: SecurityException) { currentController = null }
-        catch (_: Exception) { currentController = null }
+            if (expanded && currentController != null && controls?.visibility == View.VISIBLE) {
+                val m = currentController?.metadata
+                titleView?.text = m?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
+                subView?.text = m?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
+            }
+        } catch (_: SecurityException) {
+            currentController = null
+        } catch (_: Exception) {
+            currentController = null
+        }
     }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
+
     override fun onDestroy() {
+        isRunning = false
+        collapseTask?.let { root?.removeCallbacks(it) }
         try { unregisterReceiver(receiver) } catch (_: Exception) {}
         try { unregisterReceiver(powerReceiver) } catch (_: Exception) {}
         try { root?.let { wm.removeView(it) } } catch (_: Exception) {}
         root = null
         super.onDestroy()
     }
+
     override fun onBind(intent: Intent?): IBinder? = null
 }
