@@ -290,79 +290,166 @@ private fun JibranHome(
     onCycleVoice: () -> Unit
 ) {
     var listening by remember { mutableStateOf(false) }
-    var lastCommand by remember { mutableStateOf("أنا جاهز أساعدك") }
-    val transition = rememberInfiniteTransition(label = "orb")
+    var lastCommand by remember { mutableStateOf("أنا هنا. قل لي ما الذي تحتاجه.") }
+    val transition = rememberInfiniteTransition(label = "jibran-orb")
     val pulse by transition.animateFloat(
-        initialValue = 0.94f, targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "pulse"
+        initialValue = 0.97f, targetValue = 1.035f,
+        animationSpec = infiniteRepeatable(tween(2200), RepeatMode.Reverse),
+        label = "orb-pulse"
     )
-    Surface(modifier = Modifier.fillMaxSize(), color = Night) {
-        Box(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF070812)) {
+        Box(Modifier.fillMaxSize()) {
             Canvas(Modifier.fillMaxSize()) {
-                drawCircle(Brush.radialGradient(listOf(Color(0x332B1767), Color.Transparent)), radius = size.minDimension * .78f, center = Offset(size.width * .5f, size.height * .38f))
-                drawCircle(Brush.radialGradient(listOf(Color(0x22205B75), Color.Transparent)), radius = size.minDimension * .6f, center = Offset(size.width * .9f, size.height * .7f))
+                drawCircle(
+                    Brush.radialGradient(listOf(Color(0x442E176A), Color.Transparent)),
+                    radius = size.minDimension * .8f,
+                    center = Offset(size.width * .48f, size.height * .34f)
+                )
+                drawCircle(
+                    Brush.radialGradient(listOf(Color(0x22205B75), Color.Transparent)),
+                    radius = size.minDimension * .55f,
+                    center = Offset(size.width * .95f, size.height * .78f)
+                )
             }
             Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 26.dp, vertical = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
-                        Text("JIBRAN", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 3.sp)
-                        Text("PERSONAL ASSISTANT", color = Muted, fontSize = 9.sp, letterSpacing = 2.sp)
-                    }
-                    Box(Modifier.clip(CircleShape).background(Color(0x2227D9A5)).border(1.dp, Color(0x5536D9A5), CircleShape).padding(horizontal = 12.dp, vertical = 7.dp)) {
-                        Text("●  READY", color = Color(0xFF62E6B4), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-                Spacer(Modifier.weight(0.7f))
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(270.dp)) {
-                    Box(Modifier.size((250 * pulse).dp).blur(38.dp).background(Brush.radialGradient(listOf(Color(0x668B5CF6), Color(0x2236D9F5), Color.Transparent)), CircleShape))
-                    Canvas(Modifier.size(250.dp)) {
-                        drawCircle(Brush.radialGradient(listOf(Color(0xFF4B2B92), Color(0xFF171A39), Color(0xFF090B19))))
-                        drawCircle(Brush.sweepGradient(listOf(Color.Transparent, Violet, Cyan, Color.Transparent)), style = Stroke(width = 2.dp.toPx()))
-                        drawCircle(Brush.radialGradient(listOf(Color(0xFFB7A1FF), Color(0xFF7652D8), Color(0xFF15213F))), radius = size.minDimension * .31f)
-                        drawCircle(Color(0x66FFFFFF), radius = size.minDimension * .39f, style = Stroke(width = 1.dp.toPx()))
-                    }
-                    Icon(Icons.Rounded.SettingsVoice, contentDescription = "Jibran", tint = Color.White, modifier = Modifier.size(54.dp))
-                }
-                Spacer(Modifier.height(24.dp))
-                Text(if (listening) "سامعك..." else "أنا جبران", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                Text(lastCommand, color = Muted, fontSize = 14.sp, textAlign = TextAlign.Center)
-                Spacer(Modifier.weight(0.65f))
-                Button(
-                    onClick = { listening = true; lastCommand = "قول أمرك دلوقتي"; onListen() },
-                    modifier = Modifier.fillMaxWidth().height(60.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7547D8))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(Icons.Rounded.Mic, contentDescription = null, tint = Color.White)
-                    Spacer(Modifier.width(10.dp))
-                    Text("اتكلم مع جبران", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("JIBRAN AI", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.2.sp)
+                        Text("مساعدك الشخصي", color = Color(0xFF9295B5), fontSize = 12.sp)
+                    }
+                    Box(
+                        Modifier.clip(RoundedCornerShape(30.dp))
+                            .background(Color(0x221FC997))
+                            .border(1.dp, Color(0x5539D6A7), RoundedCornerShape(30.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text("●  جاهز", color = Color(0xFF65E2B7), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
-                Spacer(Modifier.height(14.dp))
-                Text("اضغط الميكروفون وقلّي محتاج إيه", color = Muted, fontSize = 11.sp)
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = onCycleVoice, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                    Text("تغيير الصوت المتاح على الجهاز", color = Color(0xFFD5D7EC), fontSize = 13.sp)
+
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF17182D), Color(0xFF101222), Color(0xFF0C0E1A))
+                            )
+                        )
+                        .border(1.dp, Color(0xFF292B49), RoundedCornerShape(30.dp))
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("مستعد للاستماع", color = Color(0xFFB7B9D0), fontSize = 12.sp, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(18.dp))
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(214.dp)) {
+                        Box(
+                            Modifier.size((196 * pulse).dp).blur(34.dp)
+                                .background(
+                                    Brush.radialGradient(
+                                        listOf(Color(0x778B5CF6), Color(0x3336D9F5), Color.Transparent)
+                                    ),
+                                    CircleShape
+                                )
+                        )
+                        Canvas(Modifier.size(194.dp)) {
+                            drawCircle(
+                                Brush.radialGradient(
+                                    listOf(Color(0xFF49317F), Color(0xFF1A1D3B), Color(0xFF0B0D19))
+                                )
+                            )
+                            drawCircle(
+                                Brush.sweepGradient(
+                                    listOf(Color.Transparent, Color(0xFF9B7BFF), Color(0xFF42DDF3), Color.Transparent)
+                                ),
+                                style = Stroke(width = 2.2.dp.toPx())
+                            )
+                            drawCircle(
+                                Brush.radialGradient(
+                                    listOf(Color(0xFFE1D7FF), Color(0xFF8D6BEA), Color(0xFF27345A))
+                                ),
+                                radius = size.minDimension * .27f
+                            )
+                            drawCircle(
+                                Color(0x55FFFFFF),
+                                radius = size.minDimension * .37f,
+                                style = Stroke(width = 1.dp.toPx())
+                            )
+                        }
+                        Icon(
+                            Icons.Rounded.SettingsVoice,
+                            contentDescription = "Jibran AI",
+                            tint = Color.White,
+                            modifier = Modifier.size(43.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        if (listening) "أستمع إليك الآن" else "مرحباً، أنا جبران",
+                        color = Color.White,
+                        fontSize = 23.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        lastCommand,
+                        color = Color(0xFFA4A7C2),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x331C2039))
+                            .padding(horizontal = 14.dp, vertical = 11.dp)
+                    ) {
+                        Text(
+                            "تحدث بطريقتك الطبيعية؛ لا تحتاج إلى اختيار أمر من قائمة.",
+                            color = Color(0xFFB9BBD0),
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
-                Spacer(Modifier.height(12.dp))
-                Text("محادثة واحدة مستمرة • بدون اقتراحات جاهزة", color = Muted, fontSize = 11.sp)
+
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Button(
+                        onClick = {
+                            listening = true
+                            lastCommand = "أنا أستمع… تفضل بالكلام"
+                            onListen()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(62.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7547D8))
+                    ) {
+                        Icon(Icons.Rounded.Mic, contentDescription = null, tint = Color.White)
+                        Spacer(Modifier.width(10.dp))
+                        Text("تحدث مع جبران", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = onCycleVoice,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Rounded.SettingsVoice, contentDescription = null, tint = Color(0xFFB9A4FF))
+                        Spacer(Modifier.width(8.dp))
+                        Text("اختيار صوت آخر من أصوات الجهاز", color = Color(0xFFD5D7EC), fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(5.dp))
+                    Text("JIBRAN AI  •  YOUR PERSONAL ASSISTANT", color = Color(0xFF686B87), fontSize = 8.sp, letterSpacing = 1.2.sp)
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun QuickAction(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF141629))
-            .border(1.dp, Color(0xFF292C48), RoundedCornerShape(14.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 12.dp)
-    ) {
-        Text(label, color = Color(0xFFD5D7EC), fontSize = 11.sp)
     }
 }
