@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(7, 19, 31)
         window.navigationBarColor = android.graphics.Color.rgb(7, 19, 31)
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         setContent { NivoraApp() }
     }
 }
@@ -207,13 +208,16 @@ private fun SplashScreen(onFinished: () -> Unit) {
             val t = dotProgress.value
             if (t < 1f) {
                 val y = h * (.035f + .445f * t)
-                val x = w * (.5f + .105f * kotlin.math.sin(t * Math.PI * 3.2).toFloat())
-                drawCircle(
-                    brush = Brush.radialGradient(listOf(Color(0xFFE1FFFF), Cyan, Color(0xFF36AEBB))),
-                    radius = 8.dp.toPx() + 3.dp.toPx() * (1f - t),
-                    center = Offset(x, y)
-                )
-                drawCircle(Cyan.copy(alpha = .22f), radius = 17.dp.toPx(), center = Offset(x, y))
+                val x = w * (.5f + .115f * kotlin.math.sin(t * Math.PI * 3.0).toFloat())
+                val r = 11.dp.toPx()
+                val drop = Path().apply {
+                    moveTo(x, y - r * 1.65f)
+                    cubicTo(x - r * .35f, y - r * .8f, x - r * 1.25f, y + r * .35f, x - r * .78f, y + r * .9f)
+                    cubicTo(x - r * .35f, y + r * 1.48f, x + r * .55f, y + r * 1.42f, x + r * .85f, y + r * .72f)
+                    cubicTo(x + r * 1.15f, y + r * .12f, x + r * .25f, y - r * .9f, x, y - r * 1.65f)
+                    close()
+                }
+                drawPath(drop, Brush.linearGradient(listOf(Color(0xFFE1FFFF), Cyan, Color(0xFF36AEBB)), Offset(x-r,y-r), Offset(x+r,y+r)))
             }
 
             if (outlineProgress.value > 0f) {
@@ -309,7 +313,7 @@ private fun PhoneScreen(phone: String, onPhone: (String) -> Unit, onContinue: ()
         Spacer(Modifier.height(14.dp))
         Text("By continuing, you agree to keep your circle respectful and safe.", color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
         Spacer(Modifier.height(18.dp))
-        Text("PREVIEW BUILD · SMS VERIFICATION WILL BE CONNECTED NEXT", color = Color(0xFF64818F), fontSize = 9.sp, letterSpacing = 1.sp)
+        Text("VERIFICATION PROVIDER SETUP REQUIRED", color = Color(0xFF64818F), fontSize = 9.sp, letterSpacing = 1.sp)
     }
 }
 
@@ -318,7 +322,7 @@ private fun OtpScreen(otp: String, onOtp: (String) -> Unit, onBack: () -> Unit, 
     AuthFrame(
         eyebrow = "One small step",
         title = "Verify it's\nreally you.",
-        subtitle = "Enter the 6-digit code we sent to your phone. This preview uses a demo verification flow."
+        subtitle = "Enter the 6-digit code sent to your phone. Verification activates after a secure SMS provider is connected."
     ) {
         BasicTextField(
             value = otp,
@@ -361,7 +365,8 @@ private fun AuthFrame(eyebrow: String, title: String, subtitle: String, content:
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0D2635), Night)))) {
         Box(Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 30.dp).size(160.dp).background(Cyan.copy(alpha = .06f), CircleShape))
         Column(Modifier.fillMaxSize().graphicsLayer { alpha = enterAlpha; translationY = enterOffset }
-            .padding(horizontal = 26.dp).padding(top = 72.dp, bottom = 28.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            .imePadding().verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(horizontal = 26.dp).padding(top = 30.dp, bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(Cyan), contentAlignment = Alignment.Center) {
@@ -370,7 +375,7 @@ private fun AuthFrame(eyebrow: String, title: String, subtitle: String, content:
                     Spacer(Modifier.width(10.dp))
                     Text("NIVORA", color = White, fontWeight = FontWeight.Bold, letterSpacing = 3.sp, fontSize = 14.sp)
                 }
-                Spacer(Modifier.height(66.dp))
+                Spacer(Modifier.height(34.dp))
                 Text(eyebrow.uppercase(), color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(15.dp))
                 Text(title, color = White, fontSize = 39.sp, lineHeight = 43.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
