@@ -58,6 +58,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,6 +91,7 @@ class MainActivity : ComponentActivity() {
     private var torchEnabled = false
     private var voiceIndex = 0
     private val listeningUi = mutableStateOf(false)
+    private val speechLevelUi = mutableStateOf(0f)
     private var speechRetryCount = 0
     private var partialSpeech = ""
     private val commandHandler = Handler(Looper.getMainLooper())
@@ -124,6 +126,7 @@ class MainActivity : ComponentActivity() {
                     onCommand = { handleCommand(it) },
                     onCycleVoice = { cycleVoice() },
                     isListening = listeningUi.value,
+                    speechLevel = speechLevelUi.value,
                     wakePhrase = getSharedPreferences("jibran", MODE_PRIVATE).getString("wake_phrase", "يا جبران") ?: "يا جبران",
                     wakeWordActive = getSharedPreferences("jibran", MODE_PRIVATE).getBoolean("wake_active", false),
                     onSaveWakePhrase = { phrase ->
@@ -175,7 +178,13 @@ class MainActivity : ComponentActivity() {
         partialSpeech = ""
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-EG")
+            if (Build.VERSION.SDK_INT >= 34) {
+                putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
+                putStringArrayListExtra("android.speech.extra.LANGUAGE_DETECTION_ALLOWED_LANGUAGES", supportedJibranLanguages())
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ar-EG")
+            } else {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            }
             putExtra(RecognizerIntent.EXTRA_PROMPT, "اتكلم براحتك، جبران مستمع")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
@@ -186,9 +195,9 @@ class MainActivity : ComponentActivity() {
         recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) { listeningUi.value = true }
             override fun onBeginningOfSpeech() { partialSpeech = "" }
-            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onRmsChanged(rmsdB: Float) { speechLevelUi.value = ((rmsdB + 2f) / 14f).coerceIn(0f, 1f) }
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
+            override fun onEndOfSpeech() { speechLevelUi.value = 0f }
             override fun onError(error: Int) {
                 val canRetry = error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
                     error == SpeechRecognizer.ERROR_NO_MATCH ||
@@ -282,7 +291,7 @@ class MainActivity : ComponentActivity() {
 
         // A delayed flashlight request must be scheduled, never executed immediately.
         if (command.contains("كشاف") || command.contains("فلاش")) {
-            val wantsOff = listOf("اقفل", "اطفي", "اطفئ", "وقف", "اغلق").any { command.contains(it) }
+            val wantsOff = listOf("اقفل", "اطفي", "اطفئ", "وقف", "اغلق", "يتقفل", "يقفل", "يطفي", "ينطفي", "turn off", "switch off", "disable").any { command.contains(it) }
             val wantsOn = listOf("شغل", "افتح", "ولع").any { command.contains(it) }
             if (delayMs != null && (wantsOff || wantsOn)) {
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -396,6 +405,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun supportedJibranLanguages(): ArrayList<String> = arrayListOf(
+        "ar-EG", "en-US", "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR",
+        "ru-RU", "zh-CN", "ja-JP", "ko-KR", "hi-IN", "tr-TR", "id-ID"
+    )
+
     private fun normalizeCommand(value: String): String {
         return value.lowercase(Locale("ar", "EG"))
             .replace(Regex("[ًٌٍَُِّْـ]"), "")
@@ -505,6 +519,7 @@ private fun JibranHome(
     onCommand: (String) -> Unit,
     onCycleVoice: () -> Unit,
     isListening: Boolean,
+    speechLevel: Float,
     wakePhrase: String,
     wakeWordActive: Boolean,
     onSaveWakePhrase: (String) -> Unit,
@@ -515,12 +530,53 @@ private fun JibranHome(
     var currentWakePhrase by remember { mutableStateOf(wakePhrase) }
     var editedWakePhrase by remember { mutableStateOf(wakePhrase) }
     var lastCommand by remember { mutableStateOf("أنا جبران. أنا هنا من أجلك.") }
+    val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        val prefs = context.getSharedPreferences("jibran", Context.MODE_PRIVATE)
+        if (!Settings.canDrawOverlays(context)) {
+            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName)))
+        } else {
+            prefs.edit().putBoolean("initial_permissions_flow_done", true).apply()
+        }
+    }
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences("jibran", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("initial_permissions_flow_done", false)) {
+            val required = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+            if (Build.VERSION.SDK_INT >= 33) required.add(Manifest.permission.POST_NOTIFICATIONS)
+            val missing = required.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
+            if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+            else if (!Settings.canDrawOverlays(context)) context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName)))
+            else prefs.edit().putBoolean("initial_permissions_flow_done", true).apply()
+        }
+    }
+    DisposableEffect(context) {
+        val activity = context as? ComponentActivity
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val prefs = context.getSharedPreferences("jibran", Context.MODE_PRIVATE)
+                if (Settings.canDrawOverlays(context) &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    prefs.edit().putBoolean("initial_permissions_flow_done", true).apply()
+                }
+            }
+        }
+        activity?.lifecycle?.addObserver(observer)
+        onDispose { activity?.lifecycle?.removeObserver(observer) }
+    }
     val motion = rememberInfiniteTransition(label = "jibran-motion")
     val aura by motion.animateFloat(
         initialValue = 0.88f,
         targetValue = 1.08f,
         animationSpec = infiniteRepeatable(tween(2600), RepeatMode.Reverse),
         label = "aura"
+    )
+    val voicePulse by motion.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(420), RepeatMode.Reverse),
+        label = "voice-pulse"
     )
     val orbit by motion.animateFloat(
         initialValue = 0f,
@@ -681,7 +737,7 @@ private fun JibranHome(
                         )
                     }
                     Box(
-                        Modifier.size((280 * aura).dp).blur(48.dp)
+                        Modifier.size((280 * (aura + if (isListening) speechLevel * 0.12f else 0f)).dp).blur(48.dp)
                             .background(
                                 Brush.radialGradient(
                                     listOf(Color(0x227B5BFF), Color.Transparent)
@@ -722,7 +778,7 @@ private fun JibranHome(
                         Box(
                             Modifier.padding(horizontal = 2.dp)
                                 .width(2.dp)
-                                .height((if (isListening) level * aura else level * .48f).dp)
+                                .height((if (isListening) level * (0.32f + speechLevel * 1.45f + voicePulse * 0.25f) else level * .48f).dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.verticalGradient(
