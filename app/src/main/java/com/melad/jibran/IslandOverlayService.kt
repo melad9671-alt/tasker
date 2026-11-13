@@ -149,9 +149,7 @@ class IslandOverlayService : Service() {
                     val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
                     showExpanded(metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
                         artist.ifBlank { "يتم تشغيل الوسائط" }, 0, true)
-                } else {
-                    showExpanded("مفيش موسيقى شغالة", "شغّل أغنية وهتظهر بياناتها هنا", 2200, false)
-                }
+                } // No active track: keep the island as a quiet camera-like dot.
             }
         }
         card = content
