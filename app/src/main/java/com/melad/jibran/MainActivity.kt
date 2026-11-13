@@ -122,18 +122,17 @@ class MainActivity : ComponentActivity() {
                     onCycleVoice = { cycleVoice() },
                     isListening = listeningUi.value,
                     wakePhrase = getSharedPreferences("jibran", MODE_PRIVATE).getString("wake_phrase", "يا جبران") ?: "يا جبران",
+                    wakeWordActive = getSharedPreferences("jibran", MODE_PRIVATE).getBoolean("wake_active", false),
                     onSaveWakePhrase = { phrase ->
                         getSharedPreferences("jibran", MODE_PRIVATE).edit().putString("wake_phrase", phrase.trim()).apply()
                     },
                     onToggleWakeWord = { enabled -> toggleWakeWord(enabled) }
                 )
-                window.decorView.post {
-                    intent.getStringExtra(WakeWordService.EXTRA_COMMAND)?.let {
-                        intent.removeExtra(WakeWordService.EXTRA_COMMAND)
-                        handleCommand(it)
-                    }
-                }
             }
+        }
+        intent.getStringExtra(WakeWordService.EXTRA_COMMAND)?.let { command ->
+            intent.removeExtra(WakeWordService.EXTRA_COMMAND)
+            window.decorView.post { handleCommand(command) }
         }
     }
 
@@ -227,6 +226,10 @@ class MainActivity : ComponentActivity() {
             stopService(Intent(this, WakeWordService::class.java))
             getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
             return true
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Toast.makeText(this, "خدمة التعرف على الكلام غير متاحة على الجهاز", Toast.LENGTH_LONG).show()
+            return false
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
@@ -500,12 +503,13 @@ private fun JibranHome(
     onCycleVoice: () -> Unit,
     isListening: Boolean,
     wakePhrase: String,
+    wakeWordActive: Boolean,
     onSaveWakePhrase: (String) -> Unit,
     onToggleWakeWord: (Boolean) -> Boolean
 ) {
-    var listening by remember { mutableStateOf(false) }
-    var wakeActive by remember { mutableStateOf(false) }
+    var wakeActive by remember { mutableStateOf(wakeWordActive) }
     var showWakeDialog by remember { mutableStateOf(false) }
+    var currentWakePhrase by remember { mutableStateOf(wakePhrase) }
     var editedWakePhrase by remember { mutableStateOf(wakePhrase) }
     var lastCommand by remember { mutableStateOf("أنا جبران. أنا هنا من أجلك.") }
     val motion = rememberInfiniteTransition(label = "jibran-motion")
@@ -735,7 +739,6 @@ private fun JibranHome(
                     )
                     Button(
                         onClick = {
-                            listening = true
                             lastCommand = "أستمع إليك الآن…"
                             onListen()
                         },
@@ -783,7 +786,7 @@ private fun JibranHome(
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(
-                        onClick = { editedWakePhrase = wakePhrase; showWakeDialog = true },
+                        onClick = { editedWakePhrase = currentWakePhrase; showWakeDialog = true },
                         modifier = Modifier.height(38.dp),
                         shape = RoundedCornerShape(22.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
@@ -816,7 +819,10 @@ private fun JibranHome(
                         confirmButton = {
                             TextButton(onClick = {
                                 val clean = editedWakePhrase.trim()
-                                if (clean.isNotBlank()) onSaveWakePhrase(clean)
+                                if (clean.isNotBlank()) {
+                                    currentWakePhrase = clean
+                                    onSaveWakePhrase(clean)
+                                }
                                 showWakeDialog = false
                             }) { Text("حفظ") }
                         },
