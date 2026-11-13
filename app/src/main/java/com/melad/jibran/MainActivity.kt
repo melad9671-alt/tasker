@@ -235,38 +235,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun toggleWakeWord(enabled: Boolean): Boolean {
-        if (!enabled) {
-            stopService(Intent(this, WakeWordService::class.java))
-            getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
-            return true
-        }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Toast.makeText(this, "خدمة التعرف على الكلام غير متاحة على الجهاز", Toast.LENGTH_LONG).show()
-            return false
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
-            Toast.makeText(this, "اسمح بالميكروفون ثم اضغط تفعيل مرة أخرى", Toast.LENGTH_LONG).show()
-            return false
-        }
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 43)
-            Toast.makeText(this, "اسمح بالإشعار الظاهر حتى تعرف متى يكون الميكروفون نشطاً", Toast.LENGTH_LONG).show()
-            return false
-        }
-        if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "فعّل الظهور فوق التطبيقات لعرض كرة جبران العائمة", Toast.LENGTH_LONG).show()
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            return false
-        }
-        val serviceIntent = Intent(this, WakeWordService::class.java)
-        ContextCompat.startForegroundService(this, serviceIntent)
-        getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", true).apply()
-        return true
-    }
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
