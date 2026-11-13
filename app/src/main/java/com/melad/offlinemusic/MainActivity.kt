@@ -776,11 +776,17 @@ private fun formatTime(ms: Long): String {
 
  
 @Composable
-private fun AlbumArtwork(uri: Uri?, modifier: Modifier = Modifier, large: Boolean = false) {
+private fun AlbumArtwork(uri: Uri?, modifier: Modifier = Modifier, large: Boolean = false, artworkData: ByteArray? = null) {
     val context = LocalContext.current
-    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, uri) {
-        value = if (uri == null) null else withContext(Dispatchers.IO) {
-            runCatching { context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() } }.getOrNull()
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, uri, artworkData) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                when {
+                    artworkData != null -> BitmapFactory.decodeByteArray(artworkData, 0, artworkData.size)?.asImageBitmap()
+                    uri != null -> context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+                    else -> null
+                }
+            }.getOrNull()
         }
     }
     Box(modifier.background(Color(0xFF26372B)), contentAlignment = Alignment.Center) {
