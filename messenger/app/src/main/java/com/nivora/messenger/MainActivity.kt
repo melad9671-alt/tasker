@@ -121,11 +121,7 @@ private fun NivoraApp() {
     MaterialTheme(colorScheme = dark) {
         when (screen) {
             Screen.Splash -> {
-                SplashScreen()
-                LaunchedEffect(Unit) {
-                    delay(3000)
-                    screen = Screen.Phone
-                }
+                SplashScreen(onFinished = { screen = Screen.Phone })
             }
             Screen.Phone -> PhoneScreen(
                 phone = phone,
@@ -169,50 +165,115 @@ private object NivoraAppContextHolder {
 }
 
 @Composable
-private fun SplashScreen() {
-    var reveal by remember { mutableStateOf(false) }
-    val logoAlpha by animateFloatAsState(if (reveal) 1f else 0f, tween(700, easing = FastOutSlowInEasing), label = "logo")
-    val nameAlpha by animateFloatAsState(if (reveal) 1f else 0f, tween(900, delayMillis = 350), label = "name")
-    LaunchedEffect(Unit) { delay(950); reveal = true }
+private fun SplashScreen(onFinished: () -> Unit) {
+    var phase by remember { mutableIntStateOf(0) }
+    val dotProgress = androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (phase >= 1) 1f else 0f,
+        animationSpec = tween(1900, easing = FastOutSlowInEasing), label = "fallingDot"
+    )
+    val outlineProgress = androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (phase >= 2) 1f else 0f,
+        animationSpec = tween(1050, easing = FastOutSlowInEasing), label = "logoOutline"
+    )
+    val nameProgress = androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (phase >= 3) 1f else 0f,
+        animationSpec = tween(950, easing = FastOutSlowInEasing), label = "brandReveal"
+    )
+    val contentAlpha = androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (phase >= 2) 1f else 0f,
+        animationSpec = tween(550), label = "logoContent"
+    )
+
+    LaunchedEffect(Unit) {
+        delay(250)
+        phase = 1
+        delay(2050)
+        phase = 2
+        delay(1100)
+        phase = 3
+        delay(1250)
+        onFinished()
+    }
+
     Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF071725), Color(0xFF0B2635), Color(0xFF07131F)))
-        ),
+        Modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF071725), Color(0xFF0B2635), Color(0xFF07131F))))
+            .clickable { onFinished() },
         contentAlignment = Alignment.Center
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            val p = Path().apply {
-                moveTo(w * .54f, 0f)
-                cubicTo(w * .22f, h * .16f, w * .82f, h * .25f, w * .49f, h * .43f)
-                cubicTo(w * .22f, h * .56f, w * .72f, h * .58f, w * .50f, h * .72f)
-                lineTo(w * .5f + 20f, h * .72f)
-                cubicTo(w * .76f, h * .57f, w * .28f, h * .54f, w * .52f, h * .42f)
-                cubicTo(w * .84f, h * .25f, w * .27f, h * .17f, w * .54f, 0f)
-                close()
+            val t = dotProgress.value
+            if (t < 1f) {
+                val y = h * (.035f + .445f * t)
+                val x = w * (.5f + .105f * kotlin.math.sin(t * Math.PI * 3.2).toFloat())
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(Color(0xFFE1FFFF), Cyan, Color(0xFF36AEBB))),
+                    radius = 8.dp.toPx() + 3.dp.toPx() * (1f - t),
+                    center = Offset(x, y)
+                )
+                drawCircle(Cyan.copy(alpha = .22f), radius = 17.dp.toPx(), center = Offset(x, y))
             }
-            drawPath(p, Brush.verticalGradient(listOf(Color(0xFFB8FFFF), Cyan, Color(0xFF2F9CA9))))
-            drawCircle(Cyan.copy(alpha = .14f), radius = size.minDimension * .35f, center = Offset(w * .5f, h * .49f))
+
+            if (outlineProgress.value > 0f) {
+                val cx = w * .5f
+                val cy = h * .48f
+                val rw = size.minDimension * .205f
+                val rh = rw * 1.08f
+                val p = Path().apply {
+                    moveTo(cx, cy - rh)
+                    cubicTo(cx + rw * 1.08f, cy - rh * .98f, cx + rw * 1.12f, cy + rh * .18f, cx, cy + rh)
+                    cubicTo(cx - rw * 1.12f, cy + rh * .18f, cx - rw * 1.08f, cy - rh * .98f, cx, cy - rh)
+                }
+                drawPath(
+                    p,
+                    brush = Brush.linearGradient(listOf(Color(0xFFB8FFFF), Cyan, Mint)),
+                    style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round),
+                    alpha = outlineProgress.value
+                )
+                val inner = Path().apply {
+                    moveTo(cx - rw * .42f, cy + rh * .18f)
+                    cubicTo(cx - rw * .06f, cy - rh * .55f, cx + rw * .10f, cy - rh * .55f, cx + rw * .42f, cy - rh * .18f)
+                    cubicTo(cx + rw * .08f, cy + rh * .55f, cx - rw * .10f, cy + rh * .55f, cx - rw * .42f, cy + rh * .18f)
+                    close()
+                }
+                drawPath(inner, Color(0xFF72E5E4).copy(alpha = contentAlpha.value))
+            }
         }
+
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                Modifier.size(116.dp).graphicsLayer(alpha = logoAlpha)
-                    .shadow(24.dp, RoundedCornerShape(36.dp))
-                    .clip(RoundedCornerShape(36.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF9AFFFF), Color(0xFF49C6D1), Color(0xFF247A92)))),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("N", color = Night, fontSize = 72.sp, fontWeight = FontWeight.Black, letterSpacing = (-5).sp)
+            Spacer(Modifier.height(190.dp))
+            Box(Modifier.height(48.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(
+                    "NIVORA",
+                    color = White,
+                    fontSize = 27.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 7.sp,
+                    modifier = Modifier.graphicsLayer {
+                        clip = true
+                        alpha = nameProgress.value
+                        scaleX = .96f + .04f * nameProgress.value
+                    }
+                )
             }
-            Spacer(Modifier.height(22.dp))
-            Text("NIVORA", Modifier.graphicsLayer(alpha = nameAlpha), color = White, fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("closer, in every moment", color = Muted, fontSize = 12.sp, letterSpacing = 1.6.sp)
+            Text(
+                "closer, in every moment",
+                color = Muted.copy(alpha = nameProgress.value),
+                fontSize = 11.sp,
+                letterSpacing = 1.8.sp
+            )
         }
+        Text(
+            "TAP TO SKIP",
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 34.dp),
+            color = Muted.copy(alpha = .7f),
+            fontSize = 9.sp,
+            letterSpacing = 2.sp
+        )
     }
 }
-
 
 @Composable
 private fun PhoneScreen(phone: String, onPhone: (String) -> Unit, onContinue: () -> Unit) {
