@@ -253,8 +253,15 @@ class WakeWordService : Service() {
             }
             return (amount * multiplier).coerceAtMost(24L * 60L * 60L * 1000L)
         }
-        val english = Regex("in\\s+(?:(\\d+)\\s*)?(seconds?|minutes?|hours?)").find(command) ?: return null
-        val amount = english.groupValues[1].toLongOrNull() ?: 1L
+        val english = Regex("(?:in|after)\\s+(?:(\\d+|one|a|an|two|three|five|ten)\\s*)?(seconds?|minutes?|hours?)").find(command) ?: return null
+        val amount = when (english.groupValues[1]) {
+            "one", "a", "an", "" -> 1L
+            "two" -> 2L
+            "three" -> 3L
+            "five" -> 5L
+            "ten" -> 10L
+            else -> english.groupValues[1].toLongOrNull() ?: return null
+        }
         val multiplier = when {
             english.groupValues[2].startsWith("second") -> 1_000L
             english.groupValues[2].startsWith("minute") -> 60_000L
