@@ -98,6 +98,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Never keep a background hotword listener alive: microphone is used only after the user taps Listen.
+        stopService(Intent(this, WakeWordService::class.java))
+        getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val engine = tts
@@ -127,12 +130,14 @@ class MainActivity : ComponentActivity() {
                     onCycleVoice = { cycleVoice() },
                     isListening = listeningUi.value,
                     speechLevel = speechLevelUi.value,
-                    wakePhrase = getSharedPreferences("jibran", MODE_PRIVATE).getString("wake_phrase", "يا جبران") ?: "يا جبران",
-                    wakeWordActive = getSharedPreferences("jibran", MODE_PRIVATE).getBoolean("wake_active", false),
-                    onSaveWakePhrase = { phrase ->
-                        getSharedPreferences("jibran", MODE_PRIVATE).edit().putString("wake_phrase", phrase.trim()).apply()
-                    },
-                    onToggleWakeWord = { enabled -> toggleWakeWord(enabled) }
+                    wakePhrase = "",
+                    wakeWordActive = false,
+                    onSaveWakePhrase = {},
+                    onToggleWakeWord = { enabled ->
+                        stopService(Intent(this, WakeWordService::class.java))
+                        getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
+                        false
+                    }
                 )
             }
         }
@@ -178,13 +183,10 @@ class MainActivity : ComponentActivity() {
         partialSpeech = ""
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            if (Build.VERSION.SDK_INT >= 34) {
-                putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
-                putStringArrayListExtra("android.speech.extra.LANGUAGE_DETECTION_ALLOWED_LANGUAGES", supportedJibranLanguages())
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ar-EG")
-            } else {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-            }
+            // Ask compatible speech providers to detect the spoken language instead of locking to Arabic.
+            putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
+            putStringArrayListExtra("android.speech.extra.LANGUAGE_DETECTION_ALLOWED_LANGUAGES", supportedJibranLanguages())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PROMPT, "اتكلم براحتك، جبران مستمع")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
@@ -523,6 +525,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        stopService(Intent(this, WakeWordService::class.java))
+        getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
         speechRecognizer?.destroy()
         tts?.shutdown()
         super.onDestroy()
@@ -875,53 +879,13 @@ private fun JibranHome(
                     Text("الصوت", fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(
-                        onClick = { editedWakePhrase = currentWakePhrase; showWakeDialog = true },
-                        modifier = Modifier.height(38.dp),
-                        shape = RoundedCornerShape(22.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                    ) { Text("جملة التنبيه", fontSize = 11.sp, color = Color(0xFFB9A9E8)) }
-                    OutlinedButton(
-                        onClick = {
-                            val next = !wakeActive
-                            if (onToggleWakeWord(next)) wakeActive = next
-                        },
-                        modifier = Modifier.height(38.dp),
-                        shape = RoundedCornerShape(22.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (wakeActive) Color(0xFF75E3C2) else Color(0xFFAAA2C9)
-                        )
-                    ) { Text(if (wakeActive) "إيقاف التنبيه" else "تفعيل التنبيه", fontSize = 11.sp) }
-                }
-                if (showWakeDialog) {
-                    AlertDialog(
-                        onDismissRequest = { showWakeDialog = false },
-                        title = { Text("اختر جملة تنبيه جبران") },
-                        text = {
-                            OutlinedTextField(
-                                value = editedWakePhrase,
-                                onValueChange = { editedWakePhrase = it },
-                                singleLine = true,
-                                label = { Text("مثال: يا جبران") }
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                val clean = editedWakePhrase.trim()
-                                if (clean.isNotBlank()) {
-                                    currentWakePhrase = clean
-                                    onSaveWakePhrase(clean)
-                                }
-                                showWakeDialog = false
-                            }) { Text("حفظ") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showWakeDialog = false }) { Text("إلغاء") }
-                        }
-                    )
-                }
+                Text(
+                    "الميكروفون بيشتغل بس لما تضغط زر الاستماع، وبيقفل بعد ما جبران يخلص الأمر.",
+                    color = Color(0xFFAAA2C9),
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp)
+                )
                 Spacer(Modifier.height(5.dp))
             }
         }
