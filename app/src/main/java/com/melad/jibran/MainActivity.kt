@@ -290,9 +290,9 @@ class MainActivity : ComponentActivity() {
         val delayMs = requestedDelayMillis(command)
 
         // A delayed flashlight request must be scheduled, never executed immediately.
-        if (command.contains("كشاف") || command.contains("فلاش")) {
-            val wantsOff = listOf("اقفل", "اطفي", "اطفئ", "وقف", "اغلق", "يتقفل", "يقفل", "يطفي", "ينطفي", "turn off", "switch off", "disable").any { command.contains(it) }
-            val wantsOn = listOf("شغل", "افتح", "ولع").any { command.contains(it) }
+        if (command.contains("كشاف") || command.contains("فلاش") || command.contains("flashlight") || command.contains("torch")) {
+            val wantsOff = listOf("اقفل", "اطفي", "اطفئ", "وقف", "اغلق", "يتقفل", "يقفل", "يطفي", "ينطفي", "turn off", "switch off", "disable", " off").any { command.contains(it) }
+            val wantsOn = listOf("شغل", "افتح", "ولع", "turn on", "switch on", "enable").any { command.contains(it) }
             if (delayMs != null && (wantsOff || wantsOn)) {
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(arrayOf(Manifest.permission.CAMERA), 42)
@@ -451,7 +451,24 @@ class MainActivity : ComponentActivity() {
 
     private fun requestedDelayMillis(command: String): Long? {
         val match = Regex("بعد\\s*(?:(\\d+|واحد|واحدة|اتنين|اثنين|تلاتة|ثلاثة|اربعة|أربعة|خمسة|عشرة)\\s*)?(ثانية|ثواني|دقيقة|دقايق|دقائق|ساعة|ساعات)")
-            .find(command) ?: return null
+            .find(command)
+        if (match == null) {
+            val english = Regex("(?:in|after)\\s+(?:(\\d+|one|a|an|two|three|five|ten)\\s*)?(seconds?|minutes?|hours?)").find(command) ?: return null
+            val amount = when (english.groupValues[1]) {
+                "", "one", "a", "an" -> 1L
+                "two" -> 2L
+                "three" -> 3L
+                "five" -> 5L
+                "ten" -> 10L
+                else -> english.groupValues[1].toLongOrNull() ?: return null
+            }
+            val multiplier = when {
+                english.groupValues[2].startsWith("second") -> 1_000L
+                english.groupValues[2].startsWith("minute") -> 60_000L
+                else -> 3_600_000L
+            }
+            return (amount * multiplier).coerceAtMost(24L * 60L * 60L * 1000L)
+        }
         val amount = when (match.groupValues[1]) {
             "", "واحد", "واحدة" -> 1L
             "اتنين", "اثنين" -> 2L
@@ -535,7 +552,9 @@ private fun JibranHome(
         val prefs = context.getSharedPreferences("jibran", Context.MODE_PRIVATE)
         val runtimeGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
-            (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+            (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
+            (if (Build.VERSION.SDK_INT >= 33) ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED
+             else ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED)
         if (runtimeGranted && !Settings.canDrawOverlays(context)) {
             context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName)))
         } else if (runtimeGranted) {
@@ -567,7 +586,9 @@ private fun JibranHome(
                 val prefs = context.getSharedPreferences("jibran", Context.MODE_PRIVATE)
                 if (Settings.canDrawOverlays(context) &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
+                    (if (Build.VERSION.SDK_INT >= 33) ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED
+                     else ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED)) {
                     prefs.edit().putBoolean("initial_permissions_flow_done", true).apply()
                 }
             }
