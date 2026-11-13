@@ -12,6 +12,8 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.AlarmClock
+import android.provider.MediaStore
+import android.app.SearchManager
 import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -101,9 +103,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Never keep a background hotword listener alive: microphone is used only after the user taps Listen.
-        stopService(Intent(this, WakeWordService::class.java))
-        getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
+        val prefs = getSharedPreferences("jibran", MODE_PRIVATE)
+        val savedWakePhrase = prefs.getString("wake_phrase", "Hey NEXA") ?: "Hey NEXA"
+        val wakeActive = prefs.getBoolean("wake_active", false)
+        if (wakeActive &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
+            (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)) {
+            ContextCompat.startForegroundService(this, Intent(this, WakeWordService::class.java))
+        }
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val engine = tts
@@ -133,13 +140,30 @@ class MainActivity : ComponentActivity() {
                     onCycleVoice = { cycleVoice() },
                     isListening = listeningUi.value,
                     speechLevel = speechLevelUi.value,
-                    wakePhrase = "",
-                    wakeWordActive = false,
-                    onSaveWakePhrase = {},
+                    wakePhrase = savedWakePhrase,
+                    wakeWordActive = wakeActive,
+                    onSaveWakePhrase = { phrase ->
+                        prefs.edit().putString("wake_phrase", phrase).apply()
+                    },
                     onToggleWakeWord = { enabled ->
-                        stopService(Intent(this, WakeWordService::class.java))
-                        getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
-                        false
+                        val hasMic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                        val hasNotifications = Build.VERSION.SDK_INT < 33 ||
+                            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                        if (enabled && (!hasMic || !hasNotifications || !Settings.canDrawOverlays(this))) {
+                            if (!hasMic) requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
+                            else if (!hasNotifications && Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 43)
+                            else startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName)))
+                            Toast.makeText(this, "اسمح بالأذونات المطلوبة وبعدها فعّل Hey NEXA", Toast.LENGTH_LONG).show()
+                            false
+                        } else if (enabled) {
+                            prefs.edit().putBoolean("wake_active", true).apply()
+                            ContextCompat.startForegroundService(this, Intent(this, WakeWordService::class.java))
+                            true
+                        } else {
+                            prefs.edit().putBoolean("wake_active", false).apply()
+                            stopService(Intent(this, WakeWordService::class.java))
+                            true
+                        }
                     }
                 )
             }
@@ -292,14 +316,21 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // YouTube Music must be checked before the broader YouTube match.
+        // Search and play are different actions. Try Android's standard music-search intent for play.
         if (command.contains("يوتيوب ميوزيك") || command.contains("youtube music") ||
             command.contains("يوتيوب ميوزك")) {
             val query = extractSearchQuery(raw, listOf("يوتيوب ميوزيك", "يوتيوب ميوزك", "youtube music"))
-            val url = if (query.isBlank()) "https://music.youtube.com"
-                else "https://music.youtube.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
-            openExternalUrl(url)
-            speak(if (query.isBlank()) "فتحت YouTube Music" else "فتحت نتائج $query على YouTube Music")
+            val wantsPlay = isPlayRequest(command)
+            if (query.isBlank()) {
+                openExternalUrl("https://music.youtube.com")
+                speak("فتحت YouTube Music")
+            } else if (wantsPlay && launchMusicSearch(query, "com.google.android.apps.youtube.music")) {
+                speak("بعت طلب تشغيل $query إلى YouTube Music")
+            } else {
+                val url = "https://music.youtube.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
+                openExternalUrl(url)
+                speak(if (wantsPlay) "التطبيق ما أكدش التشغيل المباشر، ففتحت لك نتائج $query" else "فتحت نتائج البحث عن $query")
+            }
             lastIntent = "youtube_music"
             return
         }
@@ -316,11 +347,30 @@ class MainActivity : ComponentActivity() {
 
         if (command.contains("اوديو ماك") || command.contains("audiomack")) {
             val query = extractSearchQuery(raw, listOf("اوديو ماك", "audiomack"))
-            val url = if (query.isBlank()) "https://audiomack.com"
-                else "https://audiomack.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
-            openExternalUrl(url)
-            speak(if (query.isBlank()) "فتحت أوديو ماك" else "بحثت عن $query على أوديو ماك")
+            val wantsPlay = isPlayRequest(command)
+            if (query.isBlank()) {
+                openExternalUrl("https://audiomack.com")
+                speak("فتحت أوديو ماك")
+            } else if (wantsPlay && launchMusicSearch(query, "com.audiomack")) {
+                speak("بعت طلب تشغيل $query إلى أوديو ماك")
+            } else {
+                val url = "https://audiomack.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
+                openExternalUrl(url)
+                speak(if (wantsPlay) "فتحت نتائج $query؛ التشغيل المباشر مش مدعوم من التطبيق على الجهاز" else "فتحت نتائج البحث عن $query على أوديو ماك")
+            }
             lastIntent = "audiomack"
+            return
+        }
+
+        // A song request without an app uses whichever installed music player handles Android's media search.
+        if (isPlayRequest(command) && (command.contains("اغنية") || command.contains("اغنيه") || command.contains("موسيقى") || command.contains("song"))) {
+            val query = extractSearchQuery(raw, emptyList())
+            if (query.isNotBlank() && launchMusicSearch(query, null)) {
+                speak("بعت طلب تشغيل $query لمشغل الموسيقى الافتراضي")
+                lastIntent = "music"
+            } else {
+                speak("مشغل الموسيقى الافتراضي ما استجابش لطلب التشغيل")
+            }
             return
         }
 
@@ -411,6 +461,24 @@ class MainActivity : ComponentActivity() {
             .replace("وشغل", " ").replace("وشغلي", " ")
             .replace(Regex("(?i)\\b(song|music)\\b"), " ")
         return query.replace(Regex("\\s+"), " ").trim().trim('،', ',', '.', '؟', '?')
+    }
+
+    private fun isPlayRequest(command: String): Boolean =
+        listOf("شغل", "شغّل", "شغل لي", "شغللي", "play", "تشغيل").any { command.contains(it) }
+
+    private fun launchMusicSearch(query: String, targetPackage: String?): Boolean {
+        return try {
+            val intent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+                putExtra(SearchManager.QUERY, query)
+                putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "audio/*")
+                if (!targetPackage.isNullOrBlank()) setPackage(targetPackage)
+            }
+            if (intent.resolveActivity(packageManager) == null) return false
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun openExternalUrl(url: String) {
@@ -504,8 +572,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        stopService(Intent(this, WakeWordService::class.java))
-        getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
+        // The foreground wake service is independent from the activity and may remain active.
         speechRecognizer?.destroy()
         tts?.shutdown()
         super.onDestroy()
@@ -866,9 +933,26 @@ private fun JibranHome(
                     Spacer(Modifier.width(7.dp))
                     Text("الصوت", fontSize = 11.sp)
                 }
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        val next = onToggleWakeWord(!wakeActive)
+                        wakeActive = next
+                        lastCommand = if (next) "جملة التنبيه Hey NEXA مفعّلة" else "جملة التنبيه متوقفة"
+                    },
+                    modifier = Modifier.height(38.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 15.dp, vertical = 4.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (wakeActive) Color(0xFF75E0BD) else Color(0xFFAAA2C9)
+                    )
+                ) {
+                    Text(if (wakeActive) "إيقاف Hey NEXA" else "تفعيل Hey NEXA", fontSize = 11.sp)
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "الميكروفون بيشتغل بس لما تضغط زر الاستماع، وبيقفل بعد ما نيكسا يخلص الأمر.",
+                    if (wakeActive) "نيكسا مستني جملة Hey NEXA في الخلفية. هيظهر إشعار طول فترة الاستماع."
+                    else "الميكروفون مش هيشتغل في الخلفية إلا لما تفعّل Hey NEXA.",
                     color = Color(0xFFAAA2C9),
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center,
