@@ -254,7 +254,8 @@ private fun SplashScreen(onFinished: () -> Unit) {
                     modifier = Modifier.graphicsLayer {
                         clip = true
                         alpha = nameProgress.value
-                        scaleX = .96f + .04f * nameProgress.value
+                        scaleX = nameProgress.value
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, .5f)
                     }
                 )
             }
@@ -353,9 +354,14 @@ private fun OtpScreen(otp: String, onOtp: (String) -> Unit, onBack: () -> Unit, 
 
 @Composable
 private fun AuthFrame(eyebrow: String, title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
+    var entered by remember { mutableStateOf(false) }
+    val enterAlpha by animateFloatAsState(if (entered) 1f else 0f, tween(650, easing = FastOutSlowInEasing), label = "authFade")
+    val enterOffset by animateFloatAsState(if (entered) 0f else 34f, tween(650, easing = FastOutSlowInEasing), label = "authSlide")
+    LaunchedEffect(Unit) { delay(80); entered = true }
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0D2635), Night)))) {
         Box(Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 30.dp).size(160.dp).background(Cyan.copy(alpha = .06f), CircleShape))
-        Column(Modifier.fillMaxSize().padding(horizontal = 26.dp).padding(top = 72.dp, bottom = 28.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Column(Modifier.fillMaxSize().graphicsLayer { alpha = enterAlpha; translationY = enterOffset }
+            .padding(horizontal = 26.dp).padding(top = 72.dp, bottom = 28.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(Cyan), contentAlignment = Alignment.Center) {
