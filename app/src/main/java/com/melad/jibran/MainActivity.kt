@@ -524,6 +524,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        // The app is no longer visible: release the microphone immediately.
+        speechRecognizer?.cancel()
+        listeningUi.value = false
+        speechLevelUi.value = 0f
+        super.onStop()
+    }
+
     override fun onDestroy() {
         stopService(Intent(this, WakeWordService::class.java))
         getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
