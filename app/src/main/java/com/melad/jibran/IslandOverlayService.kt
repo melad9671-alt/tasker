@@ -53,7 +53,7 @@ class IslandOverlayService : Service() {
             .setOngoing(true).build())
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val filter = IntentFilter(ACTION_NOTIFICATION)
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED) else registerReceiver(receiver, filter)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED) else registerReceiver(receiver, filter)
         if (Settings.canDrawOverlays(this)) createOverlay()
         refreshMedia()
         registerReceiver(powerReceiver, IntentFilter().apply {
