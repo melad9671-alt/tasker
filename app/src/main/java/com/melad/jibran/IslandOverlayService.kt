@@ -94,15 +94,15 @@ class IslandOverlayService : Service() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(9), dp(7), dp(9), dp(7))
-            background = makeShape(Color.BLACK, 28)
+            background = null
         }
         // Tiny camera-like dot. The wider transparent host is the invisible touch zone.
         val dot = View(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.BLACK) }
         }
         content.addView(dot, LinearLayout.LayoutParams(dp(25), dp(25)))
-        val title = makeText("", 12, Color.WHITE, true)
-        val subtitle = makeText("", 10, 0xFFBDBDBD.toInt(), false)
+        val title = makeText("", 12, Color.WHITE, true).apply { visibility = View.GONE }
+        val subtitle = makeText("", 10, 0xFFBDBDBD.toInt(), false).apply { visibility = View.GONE }
         titleView = title
         subView = subtitle
         content.addView(title)
@@ -122,6 +122,7 @@ class IslandOverlayService : Service() {
             refreshMedia()
         }
         control("⏭") { currentController?.transportControls?.skipToNext(); refreshMedia() }
+        controls.visibility = View.GONE
         content.addView(controls)
         host.addView(content, FrameLayout.LayoutParams(dp(35), dp(32), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         host.setOnClickListener {
@@ -155,8 +156,10 @@ class IslandOverlayService : Service() {
         expanded = true
         titleView?.text = title
         subView?.text = subtitle
-        val controls = card?.getChildAt(3)
-        controls?.visibility = View.VISIBLE
+        titleView?.visibility = View.VISIBLE
+        subView?.visibility = View.VISIBLE
+        card?.getChildAt(0)?.visibility = View.GONE
+        card?.getChildAt(3)?.visibility = View.VISIBLE
         card?.background = makeShape(Color.BLACK, 27)
         val cardParams = card?.layoutParams as? FrameLayout.LayoutParams
         cardParams?.width = dp(214)
@@ -174,7 +177,11 @@ class IslandOverlayService : Service() {
         expanded = false
         titleView?.text = ""
         subView?.text = ""
-        card?.background = makeShape(Color.BLACK, 24)
+        titleView?.visibility = View.GONE
+        subView?.visibility = View.GONE
+        card?.getChildAt(0)?.visibility = View.VISIBLE
+        card?.getChildAt(3)?.visibility = View.GONE
+        card?.background = null
         val cardParams = card?.layoutParams as? FrameLayout.LayoutParams
         cardParams?.width = dp(30)
         cardParams?.height = dp(30)
