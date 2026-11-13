@@ -213,13 +213,6 @@ private fun SplashScreen() {
     }
 }
 
-@Composable
-private fun Modifier.graphicsLayerCompat(alphaValue: Float): Modifier =
-    this.then(Modifier.graphicsLayerAlpha(alphaValue))
-
-@Composable
-private fun Modifier.graphicsLayerAlpha(value: Float): Modifier =
-    androidx.compose.ui.graphics.graphicsLayer(alpha = value)
 
 @Composable
 private fun PhoneScreen(phone: String, onPhone: (String) -> Unit, onContinue: () -> Unit) {
