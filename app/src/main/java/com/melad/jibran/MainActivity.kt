@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
             listeningUi.value = false
-            Toast.makeText(this, "اسمح لجبران باستخدام الميكروفون أولاً", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "اسمح لنيكسا باستخدام الميكروفون أولاً", Toast.LENGTH_LONG).show()
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
             return
         }
@@ -187,7 +187,7 @@ class MainActivity : ComponentActivity() {
             putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
             putStringArrayListExtra("android.speech.extra.LANGUAGE_DETECTION_ALLOWED_LANGUAGES", supportedJibranLanguages())
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault().toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "اتكلم براحتك، جبران مستمع")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "اتكلم براحتك، نيكسا مستمع")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 9000L)
@@ -332,7 +332,7 @@ class MainActivity : ComponentActivity() {
                     startActivity(Intent(AlarmClock.ACTION_SET_ALARM)
                         .putExtra(AlarmClock.EXTRA_HOUR, digits)
                         .putExtra(AlarmClock.EXTRA_MINUTES, 0)
-                        .putExtra(AlarmClock.EXTRA_MESSAGE, "منبه من جبران"))
+                        .putExtra(AlarmClock.EXTRA_MESSAGE, "منبه من نيكسا"))
                     speak("فتحت إعداد المنبه للساعة $digits")
                 } else speak("قل لي الساعة التي تريد ضبط المنبه عليها")
             }
@@ -364,7 +364,7 @@ class MainActivity : ComponentActivity() {
             command.contains("درجة الحرارة") || command.contains("الطقس") || command.contains("الجو") -> {
                 val query = if (command.contains("بكرة") || command.contains("غدا")) "طقس غدا" else "الطقس الآن"
                 startActivity(Intent(Intent.ACTION_WEB_SEARCH).putExtra("query", query))
-                speak("سأفتح لك أحدث بيانات الطقس. لم أربط جبران بعد بمصدر طقس مباشر، لذلك لن أخمن درجة الحرارة.")
+                speak("سأفتح لك أحدث بيانات الطقس. لم أربط نيكسا بعد بمصدر طقس مباشر، لذلك لن أخمن درجة الحرارة.")
             }
             command.contains("ابحث") || command.contains("ما معنى") || command.contains("من هو") ||
                 command.contains("ما هي") || command.contains("ليه") || command.contains("لماذا") -> {
@@ -526,7 +526,7 @@ private fun JibranHome(
     var showWakeDialog by remember { mutableStateOf(false) }
     var currentWakePhrase by remember { mutableStateOf(wakePhrase) }
     var editedWakePhrase by remember { mutableStateOf(wakePhrase) }
-    var lastCommand by remember { mutableStateOf("أنا جبران. أنا هنا من أجلك.") }
+    var lastCommand by remember { mutableStateOf("أنا نيكسا. أنا هنا من أجلك.") }
     val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         val prefs = context.getSharedPreferences("jibran", Context.MODE_PRIVATE)
@@ -577,7 +577,7 @@ private fun JibranHome(
         activity?.lifecycle?.addObserver(observer)
         onDispose { activity?.lifecycle?.removeObserver(observer) }
     }
-    val motion = rememberInfiniteTransition(label = "jibran-motion")
+    val motion = rememberInfiniteTransition(label = "nexa-motion")
     val aura by motion.animateFloat(
         initialValue = 0.88f,
         targetValue = 1.08f,
@@ -631,7 +631,7 @@ private fun JibranHome(
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(
-                            "JIBRAN",
+                            "NEXA",
                             color = Color.White,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -761,7 +761,7 @@ private fun JibranHome(
 
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    if (isListening) "أستمع إليك" else "أنا جبران",
+                    if (isListening) "أستمع إليك" else "أنا نيكسا",
                     color = Color.White,
                     fontSize = 27.sp,
                     fontWeight = FontWeight.Medium,
@@ -822,7 +822,7 @@ private fun JibranHome(
                     ) {
                         Icon(
                             Icons.Rounded.Mic,
-                            contentDescription = "تحدث مع جبران",
+                            contentDescription = "تحدث مع نيكسا",
                             tint = Color.White,
                             modifier = Modifier.size(31.dp)
                         )
@@ -856,7 +856,7 @@ private fun JibranHome(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "الميكروفون بيشتغل بس لما تضغط زر الاستماع، وبيقفل بعد ما جبران يخلص الأمر.",
+                    "الميكروفون بيشتغل بس لما تضغط زر الاستماع، وبيقفل بعد ما نيكسا يخلص الأمر.",
                     color = Color(0xFFAAA2C9),
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center,
