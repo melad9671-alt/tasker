@@ -7,11 +7,11 @@ android {
     namespace = "com.melad.jibran"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.melad.jibran"
+        applicationId = "com.melad.dynamicisland"
         minSdk = 23
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.2.0"
+        versionCode = 1
+        versionName = "1.0.0"
     }
     buildFeatures { compose = true }
     compileOptions {
