@@ -533,10 +533,15 @@ private fun JibranHome(
     val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         val prefs = context.getSharedPreferences("jibran", Context.MODE_PRIVATE)
-        if (!Settings.canDrawOverlays(context)) {
+        val runtimeGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
+            (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+        if (runtimeGranted && !Settings.canDrawOverlays(context)) {
             context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName)))
-        } else {
+        } else if (runtimeGranted) {
             prefs.edit().putBoolean("initial_permissions_flow_done", true).apply()
+        } else {
+            Toast.makeText(context, "تقدر تفعّل الأذونات الناقصة من إعدادات التطبيق", Toast.LENGTH_LONG).show()
         }
     }
     LaunchedEffect(Unit) {
