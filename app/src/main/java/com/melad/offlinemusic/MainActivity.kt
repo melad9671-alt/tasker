@@ -576,19 +576,21 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             .clickable { showPlayer = true }.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFF1ED760))
+                        AlbumArtwork(currentTrack.artworkUri, Modifier.size(48.dp).clip(RoundedCornerShape(9.dp)), artworkData = currentTrack.artworkData)
                         Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                             Text(currentTrack.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
-                            Text(currentTrack.artist, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                            Text(currentTrack.artist, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        IconButton(onClick = { if (playing) controller?.pause() else controller?.play() }) {
-                            Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = "Play or pause")
-                        }
-                        IconButton(onClick = { controller?.seekToNextMediaItem() }) {
-                            Icon(Icons.Filled.SkipNext, contentDescription = "Next")
-                        }
+                        IconButton(onClick = { if (playing) controller?.pause() else controller?.play() }) { Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = "Play or pause") }
+                        IconButton(onClick = { controller?.seekToNextMediaItem() }) { Icon(Icons.Filled.SkipNext, contentDescription = "Next") }
                     }
+                    LinearProgressIndicator(
+                        progress = { if (duration > 0L) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f },
+                        modifier = Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(2.dp)),
+                        color = Color(0xFF1ED760),
+                        trackColor = Color(0xFF314037)
+                    )
                     Spacer(Modifier.height(8.dp))
                 }
             }
@@ -653,17 +655,35 @@ private fun OfflineMusicApp(controller: MediaController?) {
             )
         }
         if (showPlayer && currentTrack != null) {
-            AlertDialog(
+            Dialog(
                 onDismissRequest = { showPlayer = false },
-                containerColor = Color(0xFF151B18),
-                title = { Text("NOW PLAYING", color = Color(0xFF1ED760), style = MaterialTheme.typography.labelLarge) },
-                text = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        AlbumArtwork(currentTrack.artworkUri, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(24.dp)), large = true)
+                properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+            ) {
+                Surface(Modifier.fillMaxSize(), color = Color(0xFF090D0B)) {
+                    Column(
+                        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { showPlayer = false }) { Icon(Icons.Filled.ArrowBack, contentDescription = "Close player", tint = Color.White) }
+                            Spacer(Modifier.weight(1f))
+                            Text("NOW PLAYING", color = Color(0xFF1ED760), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { showQueue = true }) { Icon(Icons.Filled.LibraryMusic, contentDescription = "Queue", tint = Color.White) }
+                        }
+                        Spacer(Modifier.weight(0.55f))
+                        AlbumArtwork(currentTrack.artworkUri, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(26.dp)), large = true, artworkData = currentTrack.artworkData)
+                        Spacer(Modifier.height(28.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(currentTrack.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(currentTrack.artist, color = Color.LightGray, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            IconButton(onClick = { toggleFavorite(currentTrack) }) {
+                                Icon(Icons.Filled.Favorite, contentDescription = "Favorite", tint = if (favorites.contains(currentTrack.id.toString())) Color(0xFF1ED760) else Color.LightGray)
+                            }
+                        }
                         Spacer(Modifier.height(18.dp))
-                        Text(currentTrack.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(currentTrack.artist, color = Color.LightGray)
-                        Spacer(Modifier.height(12.dp))
                         Slider(
                             value = if (duration > 0L) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f,
                             onValueChange = { if (duration > 0L) position = (it * duration).toLong() },
@@ -673,36 +693,25 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             Text(formatTime(position), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                             Text(formatTime(duration), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                         }
-                        TextButton(onClick = { showQueue = true }) { Text("View queue") }
+                        Spacer(Modifier.height(12.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { shuffle = !shuffle; controller?.shuffleModeEnabled = shuffle }) {
                                 Icon(Icons.Filled.Shuffle, contentDescription = "Shuffle", tint = if (shuffle) Color(0xFF1ED760) else Color.LightGray)
                             }
-                            IconButton(onClick = { controller?.seekToPreviousMediaItem() }) { Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(34.dp)) }
-                            IconButton(onClick = { if (playing) controller?.pause() else controller?.play() }, modifier = Modifier.size(58.dp).background(Color(0xFF1ED760), CircleShape)) {
-                                Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = "Play pause", tint = Color.Black, modifier = Modifier.size(34.dp))
+                            IconButton(onClick = { controller?.seekToPreviousMediaItem() }) { Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(38.dp)) }
+                            IconButton(onClick = { if (playing) controller?.pause() else controller?.play() }, modifier = Modifier.size(68.dp).background(Color(0xFF1ED760), CircleShape)) {
+                                Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = "Play pause", tint = Color.Black, modifier = Modifier.size(40.dp))
                             }
-                            IconButton(onClick = { controller?.seekToNextMediaItem() }) { Icon(Icons.Filled.SkipNext, contentDescription = "Next", modifier = Modifier.size(34.dp)) }
+                            IconButton(onClick = { controller?.seekToNextMediaItem() }) { Icon(Icons.Filled.SkipNext, contentDescription = "Next", modifier = Modifier.size(38.dp)) }
                             IconButton(onClick = {
-                                repeat = when (repeat) {
-                                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                                    else -> Player.REPEAT_MODE_OFF
-                                }
+                                repeat = when (repeat) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }
                                 controller?.repeatMode = repeat
-                            }) {
-                                Icon(Icons.Filled.Repeat, contentDescription = "Repeat", tint = if (repeat == Player.REPEAT_MODE_OFF) Color.LightGray else Color(0xFF1ED760))
-                            }
+                            }) { Icon(Icons.Filled.Repeat, contentDescription = "Repeat", tint = if (repeat == Player.REPEAT_MODE_OFF) Color.LightGray else Color(0xFF1ED760)) }
                         }
+                        Spacer(Modifier.weight(0.65f))
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { toggleFavorite(currentTrack) }) {
-                        Text(if (favorites.contains(currentTrack.id.toString())) "Remove favorite" else "Add favorite")
-                    }
-                },
-                dismissButton = { TextButton(onClick = { showPlayer = false }) { Text("Close") } }
-            )
+                }
+            }
         }
         }
     }
