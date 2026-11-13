@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.hardware.camera2.CameraManager
 import android.os.Bundle
+import android.os.Build
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.AlarmClock
@@ -84,6 +86,9 @@ class MainActivity : ComponentActivity() {
     private var lastIntent: String = ""
     private var torchEnabled = false
     private var voiceIndex = 0
+    private val listeningUi = mutableStateOf(false)
+    private var speechRetryCount = 0
+    private var partialSpeech = ""
     private val commandHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,9 +97,17 @@ class MainActivity : ComponentActivity() {
             if (status == TextToSpeech.SUCCESS) {
                 val engine = tts
                 engine?.language = Locale("ar", "EG")
+                engine?.setSpeechRate(0.93f)
+                engine?.setPitch(1.0f)
                 val saved = getSharedPreferences("jibran", MODE_PRIVATE).getString("voice_name", null)
-                val savedVoice = engine?.voices?.firstOrNull { it.name == saved }
-                if (savedVoice != null) engine.voice = savedVoice
+                val arabicVoices = engine?.voices?.filter { it.locale.language == "ar" }.orEmpty()
+                val savedVoice = arabicVoices.firstOrNull { it.name == saved }
+                val naturalArabicVoice = arabicVoices.sortedWith(
+                    compareByDescending<android.speech.tts.Voice> { it.quality }
+                        .thenBy { it.latency }
+                ).firstOrNull()
+                if (savedVoice != null) engine?.voice = savedVoice
+                else if (naturalArabicVoice != null) engine?.voice = naturalArabicVoice
             }
         }
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -106,8 +119,20 @@ class MainActivity : ComponentActivity() {
                     onSpeak = { speak(it) },
                     onListen = { startListening() },
                     onCommand = { handleCommand(it) },
-                    onCycleVoice = { cycleVoice() }
+                    onCycleVoice = { cycleVoice() },
+                    isListening = listeningUi.value,
+                    wakePhrase = getSharedPreferences("jibran", MODE_PRIVATE).getString("wake_phrase", "يا جبران") ?: "يا جبران",
+                    onSaveWakePhrase = { phrase ->
+                        getSharedPreferences("jibran", MODE_PRIVATE).edit().putString("wake_phrase", phrase.trim()).apply()
+                    },
+                    onToggleWakeWord = { enabled -> toggleWakeWord(enabled) }
                 )
+                window.decorView.post {
+                    intent.getStringExtra(WakeWordService.EXTRA_COMMAND)?.let {
+                        intent.removeExtra(WakeWordService.EXTRA_COMMAND)
+                        handleCommand(it)
+                    }
+                }
             }
         }
     }
@@ -126,40 +151,123 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun speak(message: String) {
+        tts?.setSpeechRate(0.93f)
         tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "jibran_reply")
     }
 
-    private fun startListening() {
+    private fun startListening(isRetry: Boolean = false) {
+        if (!isRetry) speechRetryCount = 0
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
+            listeningUi.value = false
             Toast.makeText(this, "اسمح لجبران باستخدام الميكروفون أولاً", Toast.LENGTH_LONG).show()
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
             return
         }
         val recognizer = speechRecognizer ?: run {
+            listeningUi.value = false
             speak("التعرف على الصوت غير متاح على هذا الجهاز")
             return
         }
+        listeningUi.value = true
+        partialSpeech = ""
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-EG")
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "قول لجبران عايز تعمل إيه")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "اتكلم براحتك، جبران مستمع")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 6500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 15000L)
         }
         recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
+            override fun onReadyForSpeech(params: Bundle?) { listeningUi.value = true }
+            override fun onBeginningOfSpeech() { partialSpeech = "" }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
-            override fun onError(error: Int) { runOnUiThread { speak("معلش، ما سمعتش الأمر بوضوح") } }
-            override fun onResults(results: Bundle?) {
-                val phrase = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                runOnUiThread { if (phrase != null) handleCommand(phrase) else speak("ممكن تعيد الأمر؟") }
+            override fun onError(error: Int) {
+                val canRetry = error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                    error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+                if (canRetry && speechRetryCount < 4) {
+                    speechRetryCount++
+                    commandHandler.postDelayed({ startListening(isRetry = true) }, 650L)
+                } else {
+                    listeningUi.value = false
+                    speechRetryCount = 0
+                    if (!canRetry) speak("حصلت مشكلة في خدمة التعرف على الصوت. جرّب مرة تانية.")
+                }
             }
-            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onResults(results: Bundle?) {
+                val phrase = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()?.takeIf { it.isNotBlank() } ?: partialSpeech
+                listeningUi.value = false
+                speechRetryCount = 0
+                if (phrase.isNotBlank()) handleCommand(phrase)
+                else speak("أنا جاهز، خذ وقتك وقل الأمر مرة تانية.")
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                partialSpeech = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull().orEmpty()
+            }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
-        recognizer.startListening(intent)
+        try {
+            recognizer.startListening(intent)
+        } catch (_: Exception) {
+            listeningUi.value = false
+            speak("مش قادر أبدأ الاستماع دلوقتي. جرّب تاني.")
+        }
+    }
+
+    private fun toggleWakeWord(enabled: Boolean): Boolean {
+        if (!enabled) {
+            stopService(Intent(this, WakeWordService::class.java))
+            getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", false).apply()
+            return true
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 41)
+            Toast.makeText(this, "اسمح بالميكروفون ثم اضغط تفعيل مرة أخرى", Toast.LENGTH_LONG).show()
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 43)
+            Toast.makeText(this, "اسمح بالإشعار الظاهر حتى تعرف متى يكون الميكروفون نشطاً", Toast.LENGTH_LONG).show()
+            return false
+        }
+        if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "فعّل الظهور فوق التطبيقات لعرض كرة جبران العائمة", Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            return false
+        }
+        val serviceIntent = Intent(this, WakeWordService::class.java)
+        ContextCompat.startForegroundService(this, serviceIntent)
+        getSharedPreferences("jibran", MODE_PRIVATE).edit().putBoolean("wake_active", true).apply()
+        return true
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(WakeWordService.EXTRA_COMMAND)?.let {
+            intent.removeExtra(WakeWordService.EXTRA_COMMAND)
+            handleCommand(it)
+        }
+    }
+
+    @Deprecated("Deprecated in Android API")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 41 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "الميكروفون جاهز. فعّل جملة التنبيه أو ابدأ الكلام.", Toast.LENGTH_SHORT).show()
+        }
+        if (requestCode == 43 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "الإشعار جاهز. اضغط تفعيل جملة التنبيه مرة أخرى.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun handleCommand(raw: String) {
@@ -389,9 +497,16 @@ private fun JibranHome(
     onSpeak: (String) -> Unit,
     onListen: () -> Unit,
     onCommand: (String) -> Unit,
-    onCycleVoice: () -> Unit
+    onCycleVoice: () -> Unit,
+    isListening: Boolean,
+    wakePhrase: String,
+    onSaveWakePhrase: (String) -> Unit,
+    onToggleWakeWord: (Boolean) -> Boolean
 ) {
     var listening by remember { mutableStateOf(false) }
+    var wakeActive by remember { mutableStateOf(false) }
+    var showWakeDialog by remember { mutableStateOf(false) }
+    var editedWakePhrase by remember { mutableStateOf(wakePhrase) }
     var lastCommand by remember { mutableStateOf("أنا جبران. أنا هنا من أجلك.") }
     val motion = rememberInfiniteTransition(label = "jibran-motion")
     val aura by motion.animateFloat(
@@ -571,7 +686,7 @@ private fun JibranHome(
 
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    if (listening) "أستمع إليك" else "أنا جبران",
+                    if (isListening) "أستمع إليك" else "أنا جبران",
                     color = Color.White,
                     fontSize = 27.sp,
                     fontWeight = FontWeight.Medium,
@@ -600,7 +715,7 @@ private fun JibranHome(
                         Box(
                             Modifier.padding(horizontal = 2.dp)
                                 .width(2.dp)
-                                .height((if (listening) level * aura else level * .48f).dp)
+                                .height((if (isListening) level * aura else level * .48f).dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.verticalGradient(
@@ -664,6 +779,51 @@ private fun JibranHome(
                     )
                     Spacer(Modifier.width(7.dp))
                     Text("الصوت", fontSize = 11.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { editedWakePhrase = wakePhrase; showWakeDialog = true },
+                        modifier = Modifier.height(38.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) { Text("جملة التنبيه", fontSize = 11.sp, color = Color(0xFFB9A9E8)) }
+                    OutlinedButton(
+                        onClick = {
+                            val next = !wakeActive
+                            if (onToggleWakeWord(next)) wakeActive = next
+                        },
+                        modifier = Modifier.height(38.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (wakeActive) Color(0xFF75E3C2) else Color(0xFFAAA2C9)
+                        )
+                    ) { Text(if (wakeActive) "إيقاف التنبيه" else "تفعيل التنبيه", fontSize = 11.sp) }
+                }
+                if (showWakeDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showWakeDialog = false },
+                        title = { Text("اختر جملة تنبيه جبران") },
+                        text = {
+                            OutlinedTextField(
+                                value = editedWakePhrase,
+                                onValueChange = { editedWakePhrase = it },
+                                singleLine = true,
+                                label = { Text("مثال: يا جبران") }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val clean = editedWakePhrase.trim()
+                                if (clean.isNotBlank()) onSaveWakePhrase(clean)
+                                showWakeDialog = false
+                            }) { Text("حفظ") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showWakeDialog = false }) { Text("إلغاء") }
+                        }
+                    )
                 }
                 Spacer(Modifier.height(5.dp))
             }
