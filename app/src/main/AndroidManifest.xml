@@ -4,12 +4,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:allowBackup="true"
-        android:label="Jibran AI"
-        android:icon="@android:drawable/ic_btn_speak_now"
-        android:roundIcon="@android:drawable/ic_btn_speak_now"
+        android:label="JIBRAN AI"
+        android:icon="@drawable/ic_launcher_music"
+        android:roundIcon="@drawable/ic_launcher_music"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true">
         <activity
