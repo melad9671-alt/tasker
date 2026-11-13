@@ -300,7 +300,10 @@ class MainActivity : ComponentActivity() {
             "شغل", "افتح لي", "افتح", "لي", "عن"
         )
         fillers.forEach { phrase -> query = query.replace(phrase, " ", ignoreCase = true) }
-        query = query.replace(Regex("(?i)\\b(اغنيه|اغنية|song|music)\\b"), " ")
+        query = normalizeCommand(query)
+        query = query.replace("اغنيه", " ").replace("اغنية", " ")
+            .replace("وشغل", " ").replace("وشغلي", " ")
+            .replace(Regex("(?i)\\b(song|music)\\b"), " ")
         return query.replace(Regex("\\s+"), " ").trim().trim('،', ',', '.', '؟', '?')
     }
 
@@ -336,9 +339,9 @@ class MainActivity : ComponentActivity() {
     private fun humanDelay(delayMs: Long): String {
         val seconds = delayMs / 1000L
         return when {
-            seconds % 3600L == 0L -> "\${seconds / 3600L} ساعة"
-            seconds % 60L == 0L -> "\${seconds / 60L} دقيقة"
-            else -> "\$seconds ثانية"
+            seconds % 3600L == 0L -> "${seconds / 3600L} ساعة"
+            seconds % 60L == 0L -> "${seconds / 60L} دقيقة"
+            else -> "$seconds ثانية"
         }
     }
 
