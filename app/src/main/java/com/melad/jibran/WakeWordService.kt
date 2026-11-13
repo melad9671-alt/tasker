@@ -47,6 +47,7 @@ class WakeWordService : Service() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private val commandHandler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var windowManager: WindowManager? = null
     private var bubble: View? = null
@@ -133,7 +134,7 @@ class WakeWordService : Service() {
         if (commandMode) {
             commandMode = false
             hideBubble()
-            if (tryHandleTorchCommand(spoken)) return
+            if (tryHandleBackgroundCommand(spoken)) return
             launchCommandInApp(spoken)
             return
         }
@@ -149,7 +150,7 @@ class WakeWordService : Service() {
             if (remainder.isNotBlank()) {
                 commandMode = false
                 hideBubble()
-                if (!tryHandleTorchCommand(remainder)) launchCommandInApp(remainder)
+                if (!tryHandleBackgroundCommand(remainder)) launchCommandInApp(remainder)
             } else {
                 commandMode = true
                 setBubbleStatus("أسمعك الآن")
@@ -163,6 +164,54 @@ class WakeWordService : Service() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         startActivity(open)
+    }
+
+    private fun tryHandleBackgroundCommand(raw: String): Boolean {
+        if (tryHandleTorchCommand(raw)) return true
+        val command = normalize(raw)
+        val musicMarker = listOf("youtube music", "يوتيوب ميوزيك", "يوتيوب ميوزك").firstOrNull { command.contains(it) }
+        if (musicMarker != null) {
+            val query = extractQuery(raw, musicMarker)
+            val url = if (query.isBlank()) "https://music.youtube.com" else "https://music.youtube.com/search?q=" + URLEncoder.encode(query, "UTF-8")
+            openExternal(url)
+            speak(if (query.isBlank()) "فتحت يوتيوب ميوزيك" else "بحثت لك عن " + query)
+            return true
+        }
+        val youtubeMarker = listOf("youtube", "يوتيوب").firstOrNull { command.contains(it) }
+        if (youtubeMarker != null) {
+            val query = extractQuery(raw, youtubeMarker)
+            val url = if (query.isBlank()) "https://www.youtube.com" else "https://www.youtube.com/results?search_query=" + URLEncoder.encode(query, "UTF-8")
+            openExternal(url)
+            speak(if (query.isBlank()) "فتحت يوتيوب" else "بحثت لك عن " + query)
+            return true
+        }
+        val audioMarker = listOf("audiomack", "اوديو ماك").firstOrNull { command.contains(it) }
+        if (audioMarker != null) {
+            val query = extractQuery(raw, audioMarker)
+            val url = if (query.isBlank()) "https://audiomack.com" else "https://audiomack.com/search?q=" + URLEncoder.encode(query, "UTF-8")
+            openExternal(url)
+            speak(if (query.isBlank()) "فتحت أوديو ماك" else "بحثت لك عن " + query)
+            return true
+        }
+        return false
+    }
+
+    private fun extractQuery(raw: String, marker: String): String {
+        val index = raw.lowercase(Locale.ROOT).indexOf(marker.lowercase(Locale.ROOT))
+        if (index < 0) return ""
+        var query = raw.substring(index + marker.length)
+        listOf("وابحث لي عن", "وابحث عن", "ابحث لي عن", "ابحث عن", "دور لي على", "دور على", "شغل لي", "شغل", "افتح لي", "افتح", "لي", "عن").forEach {
+            query = query.replace(it, " ", ignoreCase = true)
+        }
+        return query.trim().trim('،', ',', '.', '؟', '?')
+    }
+
+    private fun openExternal(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+            speak("مش قادر أفتح التطبيق أو الرابط دلوقتي")
+        }
     }
 
     private fun tryHandleTorchCommand(raw: String): Boolean {
@@ -185,7 +234,7 @@ class WakeWordService : Service() {
         val enabled = wantsOn && !wantsOff
         if (delay != null) {
             speak("حاضر، ه" + (if (enabled) "شغّل" else "طفي") + " الكشاف بعد " + humanDelay(delay))
-            handler.postDelayed({ setTorch(enabled) }, delay)
+            commandHandler.postDelayed({ setTorch(enabled) }, delay)
         } else {
             setTorch(enabled)
         }
@@ -396,6 +445,7 @@ class WakeWordService : Service() {
     override fun onDestroy() {
         stopped = true
         handler.removeCallbacksAndMessages(null)
+        commandHandler.removeCallbacksAndMessages(null)
         hideBubble()
         recognizer?.cancel()
         recognizer?.destroy()
