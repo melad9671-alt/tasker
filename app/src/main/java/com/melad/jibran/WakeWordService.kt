@@ -200,7 +200,7 @@ class WakeWordService : Service() {
         val index = raw.lowercase(Locale.ROOT).indexOf(marker.lowercase(Locale.ROOT))
         if (index < 0) return ""
         var query = raw.substring(index + marker.length)
-        listOf("وابحث لي عن", "وابحث عن", "ابحث لي عن", "ابحث عن", "دور لي على", "دور على", "شغل لي", "شغل", "افتح لي", "افتح", "لي", "عن").forEach {
+        listOf("search for", "search", "find", "play", "and", "for", "وابحث لي عن", "وابحث عن", "ابحث لي عن", "ابحث عن", "دور لي على", "دور على", "شغل لي", "شغل", "افتح لي", "افتح", "لي", "عن").forEach {
             query = query.replace(it, " ", ignoreCase = true)
         }
         return query.trim().trim('،', ',', '.', '؟', '?')
