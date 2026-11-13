@@ -352,7 +352,7 @@ class WakeWordService : Service() {
             }
         }
         val orb = ImageView(this).apply {
-            setImageResource(R.drawable.ic_jibran_orb)
+            setImageResource(R.drawable.ic_nexa_core)
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "كرة نيكسا المتفاعلة"
         }
@@ -388,10 +388,15 @@ class WakeWordService : Service() {
         try {
             windowManager?.addView(container, params)
             bubble = container
-            orbAnimator = ValueAnimator.ofFloat(0f, 360f).apply {
-                duration = 5200L
+            orbAnimator = ValueAnimator.ofFloat(0.96f, 1.04f).apply {
+                duration = 2100L
                 repeatCount = ValueAnimator.INFINITE
-                addUpdateListener { orbView?.rotation = it.animatedValue as Float }
+                repeatMode = ValueAnimator.REVERSE
+                addUpdateListener {
+                    val pulse = it.animatedValue as Float
+                    orbView?.scaleX = pulse
+                    orbView?.scaleY = pulse
+                }
                 start()
             }
         } catch (_: Exception) {
