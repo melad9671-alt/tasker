@@ -4,13 +4,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 android {
-    namespace = "com.melad.offlinemusic"
+    namespace = "com.melad.jibran"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.melad.offlinemusic"
+        applicationId = "com.melad.jibran"
         minSdk = 23
         targetSdk = 35
-        versionCode = 2
+        versionCode = 3
         versionName = "0.1.0"
     }
     buildFeatures { compose = true }
