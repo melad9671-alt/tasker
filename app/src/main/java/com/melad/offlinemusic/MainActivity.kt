@@ -65,6 +65,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -86,7 +88,8 @@ data class Track(
     val album: String,
     val duration: Long,
     val uri: Uri,
-    val artworkUri: Uri?
+    val artworkUri: Uri?,
+    val artworkData: ByteArray? = null
 )
 
 class MainActivity : ComponentActivity() {
@@ -138,7 +141,7 @@ private fun loadTracks(context: Context, treeUri: Uri): List<Track> {
         val album = metadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: "Unknown album"
         val duration = metadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
         runCatching { retriever.release() }
-        Track(file.uri.toString().hashCode().toLong(), title, artist, album, duration, file.uri, null)
+        Track(file.uri.toString().hashCode().toLong(), title, artist, album, duration, file.uri, null, if (opened) runCatching { retriever.embeddedPicture }.getOrNull() else null)
     }.sortedBy { it.title.lowercase() }
 }
 private fun Track.toMediaItem(): MediaItem =
@@ -151,6 +154,7 @@ private fun Track.toMediaItem(): MediaItem =
                 .setArtist(artist)
                 .setAlbumTitle(album)
                 .setArtworkUri(artworkUri)
+                .setArtworkData(artworkData, "image/*")
                 .build()
         )
         .build()
@@ -304,8 +308,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Triple("Artists", Icons.Filled.Person, "Artists"),
                         Triple("Favorites", Icons.Filled.Favorite, "Favorites"),
                         Triple("Recent", Icons.Filled.Repeat, "Recent"),
-                        Triple("Playlists", Icons.Filled.LibraryMusic, "Playlists"),
-                        Triple("Settings", Icons.Filled.Settings, "Settings")
+                        Triple("Playlists", Icons.Filled.LibraryMusic, "Playlists")
                     ).forEach { item ->
                         NavigationBarItem(
                             selected = tab == item.first,
@@ -322,16 +325,16 @@ private fun OfflineMusicApp(controller: MediaController?) {
             ) {
                 Spacer(Modifier.height(22.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF1ED760)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF1ED760)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color.Black)
                     }
                     Spacer(Modifier.width(12.dp))
-                    Column {
+                    Column(Modifier.weight(1f)) {
                         Text("OFFLINE MUSIC", color = Color(0xFF1ED760), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         Text("Your library", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    }
+                    IconButton(onClick = { tab = "Settings"; selectedGroup = null }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color(0xFF1ED760), modifier = Modifier.size(27.dp))
                     }
                 }
                 Spacer(Modifier.height(18.dp))
