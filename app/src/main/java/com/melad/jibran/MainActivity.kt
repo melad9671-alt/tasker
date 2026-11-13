@@ -548,7 +548,12 @@ private fun JibranHome(
         val prefs = context.getSharedPreferences("jibran", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("initial_permissions_flow_done", false)) {
             val required = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
-            if (Build.VERSION.SDK_INT >= 33) required.add(Manifest.permission.POST_NOTIFICATIONS)
+            if (Build.VERSION.SDK_INT >= 33) {
+                required.add(Manifest.permission.POST_NOTIFICATIONS)
+                required.add(Manifest.permission.READ_MEDIA_AUDIO)
+            } else {
+                required.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
             val missing = required.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
             if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
             else if (!Settings.canDrawOverlays(context)) context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName)))
