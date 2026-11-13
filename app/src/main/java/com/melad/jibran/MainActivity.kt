@@ -322,10 +322,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestedDelayMillis(command: String): Long? {
-        val match = Regex("بعد\\s+(\\d+|واحد|واحدة|اتنين|اثنين|تلاتة|ثلاثة|اربعة|أربعة|خمسة|عشرة)\\s*(ثانية|ثواني|دقيقة|دقايق|دقائق|ساعة|ساعات)")
+        val match = Regex("بعد\\s*(?:(\\d+|واحد|واحدة|اتنين|اثنين|تلاتة|ثلاثة|اربعة|أربعة|خمسة|عشرة)\\s*)?(ثانية|ثواني|دقيقة|دقايق|دقائق|ساعة|ساعات)")
             .find(command) ?: return null
         val amount = when (match.groupValues[1]) {
-            "واحد", "واحدة" -> 1L
+            "", "واحد", "واحدة" -> 1L
             "اتنين", "اثنين" -> 2L
             "تلاتة", "ثلاثة" -> 3L
             "اربعة", "أربعة" -> 4L
