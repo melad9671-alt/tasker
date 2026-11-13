@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,6 +90,7 @@ private data class Contact(
 
 @Composable
 private fun NivoraApp() {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var screen by remember { mutableStateOf(Screen.Splash) }
     var tab by remember { mutableStateOf(MainTab.Chats) }
     var phone by remember { mutableStateOf("") }
@@ -143,7 +145,7 @@ private fun NivoraApp() {
                 search = search,
                 onSearch = { search = it },
                 onOpenChat = { activeChat = it; screen = Screen.Chat },
-                onSettings = { Toast.makeText(this@NivoraAppContextHolder.context, "Settings preview", Toast.LENGTH_SHORT).show() }
+                onSettings = { Toast.makeText(context, "Settings preview", Toast.LENGTH_SHORT).show() }
             )
             Screen.Chat -> ChatScreen(
                 name = activeChat,
@@ -195,7 +197,7 @@ private fun SplashScreen() {
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
-                Modifier.size(116.dp).graphicsLayerCompat(logoAlpha)
+                Modifier.size(116.dp).graphicsLayer(alpha = logoAlpha)
                     .shadow(24.dp, RoundedCornerShape(36.dp))
                     .clip(RoundedCornerShape(36.dp))
                     .background(Brush.linearGradient(listOf(Color(0xFF9AFFFF), Color(0xFF49C6D1), Color(0xFF247A92)))),
@@ -204,7 +206,7 @@ private fun SplashScreen() {
                 Text("N", color = Night, fontSize = 72.sp, fontWeight = FontWeight.Black, letterSpacing = (-5).sp)
             }
             Spacer(Modifier.height(22.dp))
-            Text("NIVORA", Modifier.graphicsLayerCompat(nameAlpha), color = White, fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
+            Text("NIVORA", Modifier.graphicsLayer(alpha = nameAlpha), color = White, fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
             Spacer(Modifier.height(8.dp))
             Text("closer, in every moment", color = Muted, fontSize = 12.sp, letterSpacing = 1.6.sp)
         }
