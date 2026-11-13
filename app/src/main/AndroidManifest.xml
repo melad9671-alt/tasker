@@ -12,7 +12,7 @@
     <application
         android:allowBackup="true"
         android:label="NEXA"
-        android:icon="@drawable/ic_jibran_orb"
+        android:icon="@drawable/ic_nexa_launcher"
         android:roundIcon="@drawable/ic_jibran_orb"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true">
