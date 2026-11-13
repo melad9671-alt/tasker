@@ -1,4 +1,4 @@
-# JIBRAN AI
+# NEXA
 
 A voice-first Android assistant prototype.
 
@@ -10,7 +10,7 @@ A voice-first Android assistant prototype.
 
 ## Build
 GitHub Actions builds a debug APK on pushes to the `jibran-ai` branch.
-Download the `JIBRAN-AI-debug` artifact from the workflow run.
+Download the `NEXA-debug` artifact from the workflow run.
 
 ## Roadmap
 1. Improve command understanding and confirmation states.
