@@ -2,6 +2,9 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -9,10 +12,14 @@
     <application
         android:allowBackup="true"
         android:label="JIBRAN AI"
-        android:icon="@drawable/ic_launcher_music"
-        android:roundIcon="@drawable/ic_launcher_music"
+        android:icon="@drawable/ic_jibran_orb"
+        android:roundIcon="@drawable/ic_jibran_orb"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true">
+        <service
+            android:name="com.melad.jibran.WakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <activity
             android:name="com.melad.jibran.MainActivity"
             android:exported="true">
