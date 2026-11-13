@@ -140,7 +140,7 @@ class WakeWordService : Service() {
         }
 
         val phrase = getSharedPreferences("jibran", MODE_PRIVATE)
-            .getString("wake_phrase", "يا جبران").orEmpty()
+            .getString("wake_phrase", "Hey NEXA").orEmpty()
         val normalizedSpeech = normalize(spoken)
         val normalizedPhrase = normalize(phrase)
         if (normalizedPhrase.isNotBlank() && normalizedSpeech.contains(normalizedPhrase)) {
@@ -226,7 +226,7 @@ class WakeWordService : Service() {
         if (!wantsOff && !wantsOn) return false
 
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            speak("إذن الكاميرا غير مفعّل. افتح جبران واسمح بالإذن أولاً.")
+            speak("إذن الكاميرا غير مفعّل. افتح نيكسا واسمح بالإذن أولاً.")
             return true
         }
 
@@ -354,7 +354,7 @@ class WakeWordService : Service() {
         val orb = ImageView(this).apply {
             setImageResource(R.drawable.ic_jibran_orb)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "كرة جبران المتفاعلة"
+            contentDescription = "كرة نيكسا المتفاعلة"
         }
         orbView = orb
         container.addView(orb, LinearLayout.LayoutParams(dp(48), dp(48)))
@@ -425,9 +425,9 @@ class WakeWordService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "استماع جبران", NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID, "استماع نيكسا", NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "إشعار ظاهر عند تفعيل جملة تنبيه جبران"
+                description = "إشعار ظاهر عند تفعيل جملة تنبيه نيكسا"
                 setShowBadge(false)
             }
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
@@ -441,7 +441,7 @@ class WakeWordService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("جبران يستمع لجملة التنبيه")
+            .setContentTitle("نيكسا يستمع لجملة التنبيه")
             .setContentText("الميكروفون يعمل. اضغط إيقاف لإنهاء الاستماع.")
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
