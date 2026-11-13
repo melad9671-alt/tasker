@@ -171,6 +171,11 @@ class MainActivity : ComponentActivity() {
             val wantsOff = listOf("اقفل", "اطفي", "اطفئ", "وقف", "اغلق").any { command.contains(it) }
             val wantsOn = listOf("شغل", "افتح", "ولع").any { command.contains(it) }
             if (delayMs != null && (wantsOff || wantsOn)) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(arrayOf(Manifest.permission.CAMERA), 42)
+                    speak("أندرويد بيطلب إذن الكاميرا للتحكم في فلاش الجهاز فقط، مش لتصويرك. اسمح بالإذن وكرر الأمر.")
+                    return
+                }
                 val action = if (wantsOff) "إيقاف" else "تشغيل"
                 speak("تمام، هقوم ب$action الكشاف بعد " + humanDelay(delayMs))
                 commandHandler.postDelayed({ setTorch(wantsOn) }, delayMs)
@@ -352,7 +357,7 @@ class MainActivity : ComponentActivity() {
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.CAMERA), 42)
-            speak("اسمح لجبران باستخدام الكاميرا لتشغيل الكشاف، ثم أعد طلبك")
+            speak("أندرويد بيطلب إذن الكاميرا للتحكم في فلاش الجهاز فقط، مش لتصويرك. اسمح بالإذن ثم أعد طلبك")
             return
         }
         try {
