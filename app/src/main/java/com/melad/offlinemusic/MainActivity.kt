@@ -140,8 +140,9 @@ private fun loadTracks(context: Context, treeUri: Uri): List<Track> {
         val artist = metadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "Unknown artist"
         val album = metadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: "Unknown album"
         val duration = metadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        val artworkData = if (opened) runCatching { retriever.embeddedPicture }.getOrNull() else null
         runCatching { retriever.release() }
-        Track(file.uri.toString().hashCode().toLong(), title, artist, album, duration, file.uri, null, if (opened) runCatching { retriever.embeddedPicture }.getOrNull() else null)
+        Track(file.uri.toString().hashCode().toLong(), title, artist, album, duration, file.uri, null, artworkData)
     }.sortedBy { it.title.lowercase() }
 }
 private fun Track.toMediaItem(): MediaItem =
