@@ -1,4 +1,5 @@
 name: Build Dynamic Island APK
+run-name: Dynamic Island build - ${{ github.sha }}
 on:
   push:
     branches: [dynamic-island]
