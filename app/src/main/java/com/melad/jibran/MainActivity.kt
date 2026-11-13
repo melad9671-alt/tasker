@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.hardware.camera2.CameraManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.AlarmClock
 import android.provider.Settings
 import android.speech.RecognizerIntent
@@ -82,6 +84,7 @@ class MainActivity : ComponentActivity() {
     private var lastIntent: String = ""
     private var torchEnabled = false
     private var voiceIndex = 0
+    private val commandHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -160,31 +163,73 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleCommand(raw: String) {
-        val command = raw.lowercase(Locale("ar", "EG")).trim()
-        val followUp = command in listOf("اقفله", "اطفيه", "قفله", "شغله", "افتحه", "زوده", "عليه", "قلله", "وطيه")
-        val resolved = if (followUp && lastIntent == "torch") {
-            when (command) {
-                "اقفله", "اطفيه", "قفله" -> "اقفل الكشاف"
-                "شغله", "افتحه" -> "شغل الكشاف"
-                else -> command
+        val command = normalizeCommand(raw)
+        val delayMs = requestedDelayMillis(command)
+
+        // A delayed flashlight request must be scheduled, never executed immediately.
+        if (command.contains("كشاف") || command.contains("فلاش")) {
+            val wantsOff = listOf("اقفل", "اطفي", "اطفئ", "وقف", "اغلق").any { command.contains(it) }
+            val wantsOn = listOf("شغل", "افتح", "ولع").any { command.contains(it) }
+            if (delayMs != null && (wantsOff || wantsOn)) {
+                val action = if (wantsOff) "إيقاف" else "تشغيل"
+                speak("تمام، هقوم ب$action الكشاف بعد " + humanDelay(delayMs))
+                commandHandler.postDelayed({ setTorch(wantsOn) }, delayMs)
+                lastIntent = "torch"
+                return
             }
-        } else command
+            if (wantsOff || wantsOn || command.contains("كشاف") || command.contains("فلاش")) {
+                setTorch(wantsOn && !wantsOff)
+                lastIntent = "torch"
+                return
+            }
+        }
+
+        // Follow-up commands inherit the last device action when the user uses pronouns.
+        val followUp = command in listOf("اقفله", "اطفيه", "قفله", "شغله", "افتحه")
+        if (followUp && lastIntent == "torch") {
+            setTorch(command == "شغله" || command == "افتحه")
+            return
+        }
+
+        // YouTube Music must be checked before the broader YouTube match.
+        if (command.contains("يوتيوب ميوزيك") || command.contains("youtube music") ||
+            command.contains("يوتيوب ميوزك")) {
+            val query = extractSearchQuery(raw, listOf("يوتيوب ميوزيك", "يوتيوب ميوزك", "youtube music"))
+            val url = if (query.isBlank()) "https://music.youtube.com"
+                else "https://music.youtube.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
+            openExternalUrl(url)
+            speak(if (query.isBlank()) "فتحت YouTube Music" else "فتحت نتائج $query على YouTube Music")
+            lastIntent = "youtube_music"
+            return
+        }
+
+        if (command.contains("يوتيوب") || command.contains("youtube")) {
+            val query = extractSearchQuery(raw, listOf("يوتيوب", "youtube"))
+            val url = if (query.isBlank()) "https://www.youtube.com"
+                else "https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(query, "UTF-8")
+            openExternalUrl(url)
+            speak(if (query.isBlank()) "فتحت يوتيوب" else "بحثت عن $query على يوتيوب")
+            lastIntent = "youtube"
+            return
+        }
+
+        if (command.contains("اوديو ماك") || command.contains("audiomack")) {
+            val query = extractSearchQuery(raw, listOf("اوديو ماك", "audiomack"))
+            val url = if (query.isBlank()) "https://audiomack.com"
+                else "https://audiomack.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
+            openExternalUrl(url)
+            speak(if (query.isBlank()) "فتحت أوديو ماك" else "بحثت عن $query على أوديو ماك")
+            lastIntent = "audiomack"
+            return
+        }
+
         when {
-            resolved.contains("اقفل الكشاف") || resolved.contains("اطفي الكشاف") || resolved.contains("وقف الكشاف") -> {
-                setTorch(false)
-                lastIntent = "torch"
-            }
-            resolved.contains("كشاف") || resolved.contains("فلاش") -> {
-                val shouldTurnOn = !(resolved.contains("اقفل") || resolved.contains("اطفي") || resolved.contains("وقف"))
-                setTorch(shouldTurnOn)
-                lastIntent = "torch"
-            }
-            resolved.contains("واي فاي") || resolved.contains("wifi") || resolved.contains("الانترنت") -> {
+            command.contains("واي فاي") || command.contains("wifi") || command.contains("الانترنت") -> {
                 startActivity(Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY))
                 speak("فتحت لك إعدادات الاتصال")
             }
-            resolved.contains("منبه") || resolved.contains("منبّه") -> {
-                val digits = Regex("\\d{1,2}").find(resolved)?.value?.toIntOrNull()
+            command.contains("منبه") || command.contains("منبّه") -> {
+                val digits = Regex("\\d{1,2}").find(command)?.value?.toIntOrNull()
                 if (digits != null && digits in 0..23) {
                     startActivity(Intent(AlarmClock.ACTION_SET_ALARM)
                         .putExtra(AlarmClock.EXTRA_HOUR, digits)
@@ -193,20 +238,8 @@ class MainActivity : ComponentActivity() {
                     speak("فتحت إعداد المنبه للساعة $digits")
                 } else speak("قل لي الساعة التي تريد ضبط المنبه عليها")
             }
-            resolved.contains("يوتيوب") -> {
-                val query = raw.substringAfter("يوتيوب", "").replace("وابحث عن", "").replace("ابحث عن", "").trim()
-                val url = if (query.isBlank()) "https://www.youtube.com" else "https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(query, "UTF-8")
-                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-                speak(if (query.isBlank()) "فتحت يوتيوب" else "فتحت نتائج البحث على يوتيوب")
-            }
-            resolved.contains("اوديو ماك") || resolved.contains("أوديو ماك") || resolved.contains("audiomack") -> {
-                val query = raw.substringAfter("ماك", "").trim().ifBlank { raw.substringAfter("audiomack", "").trim() }
-                val url = if (query.isBlank()) "https://audiomack.com" else "https://audiomack.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
-                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-                speak(if (query.isBlank()) "أفتح لك أوديو ماك" else "أفتح لك نتائج البحث عن $query في أوديو ماك")
-            }
-            resolved.contains("الصوت") -> {
-                val number = Regex("\\d{1,3}").find(resolved)?.value?.toIntOrNull()
+            command.contains("الصوت") -> {
+                val number = Regex("\\d{1,3}").find(command)?.value?.toIntOrNull()
                 val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 if (number != null) {
                     val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
@@ -214,37 +247,98 @@ class MainActivity : ComponentActivity() {
                     speak("تم ضبط مستوى الصوت")
                 } else speak("قل لي مستوى الصوت الذي تريده من صفر إلى مئة")
             }
-            resolved.contains("افتح") && (resolved.contains("الإعدادات") || resolved.contains("الاعدادات")) -> {
-                startActivity(Intent(Settings.ACTION_SETTINGS)); speak("فتحت الإعدادات")
-            }
-            resolved.contains("درجة الحرارة") || resolved.contains("الطقس") || resolved.contains("الجو") -> {
-                val query = if (resolved.contains("بكرة") || resolved.contains("غدا")) "طقس غدا" else "الطقس الآن"
-                startActivity(Intent(Intent.ACTION_WEB_SEARCH).putExtra("query", query))
-                speak("سأفتح لك أحدث بيانات الطقس. لم أربط جبران بعد بمصدر طقس مباشر، لذلك لن أخمن درجة الحرارة.")
-            }
-            resolved.startsWith("افتح ") -> {
-                val name = resolved.removePrefix("افتح ").trim()
+            command.startsWith("افتح") || command.startsWith("شغل") -> {
+                val appName = command.replaceFirst(Regex("^(افتح|شغل)\\s*(لي\\s*)?"), "").trim()
                 val packageName = when {
-                    name.contains("واتساب") -> "com.whatsapp"
-                    name.contains("تيليجرام") -> "org.telegram.messenger"
-                    name.contains("فيسبوك") -> "com.facebook.katana"
-                    name.contains("انستجرام") || name.contains("إنستجرام") -> "com.instagram.android"
-                    name.contains("سبوتيفاي") -> "com.spotify.music"
-                    name.contains("أوديو ماك") || name.contains("اوديو ماك") -> "com.audiomack"
+                    appName.contains("واتساب") -> "com.whatsapp"
+                    appName.contains("تيليجرام") -> "org.telegram.messenger"
+                    appName.contains("فيسبوك") -> "com.facebook.katana"
+                    appName.contains("انستجرام") -> "com.instagram.android"
+                    appName.contains("سبوتيفاي") -> "com.spotify.music"
                     else -> null
                 }
                 val launch = packageName?.let { packageManager.getLaunchIntentForPackage(it) }
                 if (launch != null) {
-                    startActivity(launch); speak("فتحت $name")
-                } else {
-                    speak("لم أجد تطبيق $name مثبتاً، أو أن النظام لا يسمح بفتحه مباشرة")
-                }
+                    startActivity(launch)
+                    speak("فتحت التطبيق")
+                } else speak("مش قادر أحدد التطبيق المقصود. جرّب تقول اسمه بوضوح.")
             }
-            resolved.contains("ابحث") || resolved.contains("ما معنى") || resolved.contains("من هو") || resolved.contains("ما هي") || resolved.contains("ليه") || resolved.contains("لماذا") -> {
+            command.contains("درجة الحرارة") || command.contains("الطقس") || command.contains("الجو") -> {
+                val query = if (command.contains("بكرة") || command.contains("غدا")) "طقس غدا" else "الطقس الآن"
+                startActivity(Intent(Intent.ACTION_WEB_SEARCH).putExtra("query", query))
+                speak("سأفتح لك أحدث بيانات الطقس. لم أربط جبران بعد بمصدر طقس مباشر، لذلك لن أخمن درجة الحرارة.")
+            }
+            command.contains("ابحث") || command.contains("ما معنى") || command.contains("من هو") ||
+                command.contains("ما هي") || command.contains("ليه") || command.contains("لماذا") -> {
                 startActivity(Intent(Intent.ACTION_WEB_SEARCH).putExtra("query", raw))
-                speak("سأبحث لك عن إجابة موثوقة على الإنترنت")
+                speak("سأبحث لك عن إجابة على الإنترنت")
             }
-            else -> speak("فهمت كلامك، لكن لا أملك بعد خدمة ذكاء اصطناعي متصلة للإجابة عن هذا السؤال أو تنفيذ هذا الطلب. لن أدّعي أنني نفذته.")
+            else -> speak("فهمت كلامك، لكن الطلب ده لسه مش مدعوم عندي. مش هقول إني نفذته وهو ما اتنفذش.")
+        }
+    }
+
+    private fun normalizeCommand(value: String): String {
+        return value.lowercase(Locale("ar", "EG"))
+            .replace(Regex("[ًٌٍَُِّْـ]"), "")
+            .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
+            .replace('ى', 'ي')
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun extractSearchQuery(raw: String, appNames: List<String>): String {
+        var query = raw.trim()
+        val normalized = normalizeCommand(query)
+        val appName = appNames.firstOrNull { normalized.contains(normalizeCommand(it)) }
+        if (appName != null) {
+            val index = normalized.indexOf(normalizeCommand(appName))
+            if (index >= 0) query = query.substring((index + appName.length).coerceAtMost(query.length))
+        }
+        val fillers = listOf(
+            "وابحث لي عن", "وابحث عن", "وابحثلي عن", "ابحث لي عن", "ابحث عن",
+            "دور لي على", "دور على", "ابحثلي عن", "وشغل لي", "وشغل", "شغل لي",
+            "شغل", "افتح لي", "افتح", "لي", "عن"
+        )
+        fillers.forEach { phrase -> query = query.replace(phrase, " ", ignoreCase = true) }
+        query = query.replace(Regex("(?i)\\b(اغنيه|اغنية|song|music)\\b"), " ")
+        return query.replace(Regex("\\s+"), " ").trim().trim('،', ',', '.', '؟', '?')
+    }
+
+    private fun openExternalUrl(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            speak("مش قادر أفتح الرابط على الجهاز")
+        }
+    }
+
+    private fun requestedDelayMillis(command: String): Long? {
+        val match = Regex("بعد\\s+(\\d+|واحد|واحدة|اتنين|اثنين|تلاتة|ثلاثة|اربعة|أربعة|خمسة|عشرة)\\s*(ثانية|ثواني|دقيقة|دقايق|دقائق|ساعة|ساعات)")
+            .find(command) ?: return null
+        val amount = when (match.groupValues[1]) {
+            "واحد", "واحدة" -> 1L
+            "اتنين", "اثنين" -> 2L
+            "تلاتة", "ثلاثة" -> 3L
+            "اربعة", "أربعة" -> 4L
+            "خمسة" -> 5L
+            "عشرة" -> 10L
+            else -> match.groupValues[1].toLongOrNull() ?: return null
+        }
+        val multiplier = when (match.groupValues[2]) {
+            "ثانية", "ثواني" -> 1_000L
+            "دقيقة", "دقايق", "دقائق" -> 60_000L
+            else -> 3_600_000L
+        }
+        return (amount * multiplier).coerceAtMost(24L * 60L * 60L * 1000L)
+    }
+
+    private fun humanDelay(delayMs: Long): String {
+        val seconds = delayMs / 1000L
+        return when {
+            seconds % 3600L == 0L -> "\${seconds / 3600L} ساعة"
+            seconds % 60L == 0L -> "\${seconds / 60L} دقيقة"
+            else -> "\$seconds ثانية"
         }
     }
 
