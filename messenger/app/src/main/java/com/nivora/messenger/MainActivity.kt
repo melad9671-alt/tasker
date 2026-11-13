@@ -258,21 +258,31 @@ private fun OtpScreen(otp: String, onOtp: (String) -> Unit, onBack: () -> Unit, 
         title = "Verify it's\nreally you.",
         subtitle = "Enter the 6-digit code we sent to your phone. This preview uses a demo verification flow."
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            repeat(6) { index ->
-                Box(
-                    Modifier.weight(1f).height(58.dp).clip(RoundedCornerShape(15.dp))
-                        .background(Panel).border(1.dp, if (otp.length > index) Cyan.copy(alpha = .65f) else Color.White.copy(alpha = .06f), RoundedCornerShape(15.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(otp.getOrNull(index)?.toString() ?: "–", color = White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        BasicTextField(
+            value = otp,
+            onValueChange = { onOtp(it.filter(Char::isDigit).take(6)) },
+            modifier = Modifier.fillMaxWidth().height(58.dp),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            textStyle = androidx.compose.ui.text.TextStyle(color = Color.Transparent),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.Transparent),
+            decorationBox = { innerTextField ->
+                Box(Modifier.fillMaxSize()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        repeat(6) { index ->
+                            Box(
+                                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(15.dp))
+                                    .background(Panel)
+                                    .border(1.dp, if (otp.length > index) Cyan.copy(alpha = .65f) else Color.White.copy(alpha = .06f), RoundedCornerShape(15.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(otp.getOrNull(index)?.toString() ?: "–", color = White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                    Box(Modifier.fillMaxSize().padding(1.dp)) { innerTextField() }
                 }
             }
-        }
-        BasicTextField(
-            value = otp, onValueChange = { onOtp(it.filter(Char::isDigit).take(6)) },
-            modifier = Modifier.fillMaxWidth().height(1.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            textStyle = androidx.compose.ui.text.TextStyle(color = Night)
         )
         Spacer(Modifier.height(20.dp))
         GradientButton("Verify & enter", onVerify, enabled = otp.length == 6)
