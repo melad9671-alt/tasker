@@ -27,6 +27,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -72,6 +73,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -748,6 +751,15 @@ private fun JibranHome(
                             )
                         )
                     }
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_nexa_core),
+                        contentDescription = "NEXA animated energy core",
+                        modifier = Modifier.size(174.dp).graphicsLayer {
+                            rotationZ = orbit * -0.08f
+                            scaleX = aura + if (isListening) speechLevel * 0.10f else 0f
+                            scaleY = aura + if (isListening) speechLevel * 0.10f else 0f
+                        }
+                    )
                     Box(
                         Modifier.size((280 * (aura + if (isListening) speechLevel * 0.12f else 0f)).dp).blur(48.dp)
                             .background(
