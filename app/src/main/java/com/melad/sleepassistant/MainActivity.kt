@@ -55,7 +55,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
  val apps=remember(refresh){ val pm=activity.packageManager; val launcher=Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER); pm.queryIntentActivities(launcher,PackageManager.MATCH_ALL).mapNotNull{ri->val pkg=ri.activityInfo?.packageName?:return@mapNotNull null;if(pkg==activity.packageName)return@mapNotNull null;AppItem(ri.loadLabel(pm).toString(),pkg)}.distinctBy{it.pkg}.sortedBy{it.label.lowercase()} }
  val actions=remember(refresh,selected){selected?.let{readActions(activity,it.pkg)}?:emptyList()}
  val enabled=remember(refresh){isEnabled(activity)}
- MaterialTheme(colorScheme=darkColorScheme(primary=accent,background=bg,surface=panel)){
+ MaterialTheme(colorScheme=darkColorScheme(primary=accent,onPrimary=Color(0xFFFFFFFF),secondary=Color(0xFF65B8FF),onSecondary=Color(0xFF071426),tertiary=Color(0xFFFFC078),background=bg,onBackground=fg,surface=panel,onSurface=fg,surfaceVariant=Color(0xFF202B40),onSurfaceVariant=muted)){
   Scaffold(containerColor=bg,bottomBar={NavigationBar(containerColor=panel){
    NavigationBarItem(selected=tab==0,onClick={tab=0;selected=null},icon={Icon(Icons.Default.Home,null)},label={Text("Home")})
    NavigationBarItem(selected=tab==1,onClick={tab=1;selected=null},icon={Icon(Icons.Default.Apps,null)},label={Text("Apps")})
