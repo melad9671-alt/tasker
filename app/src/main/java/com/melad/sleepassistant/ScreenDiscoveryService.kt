@@ -11,7 +11,13 @@ class ScreenDiscoveryService:AccessibilityService(){
   if(pkg==packageName)return
   val found=LinkedHashMap<String,JSONObject>();collect(root,found,0);val arr=JSONArray();found.values.forEach{arr.put(it)}
   getSharedPreferences("discovery",0).edit().putString(pkg,arr.toString()).apply()
-  val prefs=getSharedPreferences("automation_runtime",0);val pending=prefs.getString("steps",null)?:return
+  val prefs=getSharedPreferences("automation_runtime",0)
+  val clickLabel=prefs.getString("click_label",null)
+  val clickPackage=prefs.getString("click_package",null)
+  if(!clickLabel.isNullOrBlank()&&(clickPackage==null||clickPackage==pkg)){
+   if(clickMatch(root,clickLabel))prefs.edit().remove("click_label").remove("click_package").apply()
+  }
+  val pending=prefs.getString("steps",null)?:return
   val steps=pending.split("||").filter{it.isNotBlank()};if(steps.isEmpty()){prefs.edit().remove("steps").apply();return}
   val target=prefs.getString("package",null);if(target!=null&&target!=pkg)return
   if(clickMatch(root,steps.first())){val rest=steps.drop(1);prefs.edit().putString("steps",rest.joinToString("||")).apply();if(rest.isEmpty())prefs.edit().remove("package").apply()}
