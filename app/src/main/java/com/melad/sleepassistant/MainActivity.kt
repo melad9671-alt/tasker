@@ -1,7 +1,14 @@
 package com.melad.sleepassistant
 import android.app.*
 import android.content.*
-import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.DisposableEffect
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -32,7 +39,7 @@ private val panel=Color(0xFF121B2B)
 private val accent=Color(0xFF8B7CFF)
 private val fg=Color(0xFFF4F6FC)
 private val muted=Color(0xFF98A6BD)
-data class AppItem(val label:String,val pkg:String,val system:Boolean)
+data class AppItem(val label:String,val pkg:String)
 data class ActionItem(val label:String,val id:String,val cls:String,val clickable:Boolean)
 class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{Sleepless(this)}}}
 
@@ -42,8 +49,10 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
  var search by remember{mutableStateOf("")}
  var refresh by remember{mutableIntStateOf(0)}
  var chosen by remember{mutableStateOf(listOf<ActionItem>())}
+ var chosenPackage by remember{mutableStateOf<String?>(null)}
+ DisposableEffect(activity){ val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_RESUME)refresh++};activity.lifecycle.addObserver(observer);onDispose{activity.lifecycle.removeObserver(observer)} }
  var tasks by remember{mutableStateOf(readTasks(activity))}
- val apps=remember(refresh){activity.packageManager.getInstalledApplications(0).filter{it.packageName!=activity.packageName}.map{AppItem(activity.packageManager.getApplicationLabel(it).toString(),it.packageName,(it.flags and ApplicationInfo.FLAG_SYSTEM)!=0)}.distinctBy{it.pkg}.sortedBy{it.label.lowercase()}}
+ val apps=remember(refresh){ val pm=activity.packageManager; val launcher=Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER); pm.queryIntentActivities(launcher,PackageManager.MATCH_ALL).mapNotNull{ri->val pkg=ri.activityInfo?.packageName?:return@mapNotNull null;if(pkg==activity.packageName)return@mapNotNull null;AppItem(ri.loadLabel(pm).toString(),pkg)}.distinctBy{it.pkg}.sortedBy{it.label.lowercase()} }
  val actions=remember(refresh,selected){selected?.let{readActions(activity,it.pkg)}?:emptyList()}
  val enabled=remember(refresh){isEnabled(activity)}
  MaterialTheme(colorScheme=darkColorScheme(primary=accent,background=bg,surface=panel)){
@@ -71,8 +80,9 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
      }
      Card(colors=CardDefaults.cardColors(containerColor=panel)){Column(Modifier.padding(14.dp)){
       Text("EXPLORE THIS APP",color=fg,fontWeight=FontWeight.Bold)
-      Text("Open the app and visit its screens. Visible controls exposed to Android Accessibility will appear below.",color=muted,fontSize=11.sp)
-      Button(onClick={activity.packageManager.getLaunchIntentForPackage(selected!!.pkg)?.let{activity.startActivity(it)}},modifier=Modifier.fillMaxWidth()){Text("Open app and explore")}
+      Text("افتح التطبيق وتنقّل بين شاشاته؛ العناصر القابلة للتفاعل التي يتيحها Android ستظهر هنا عند الرجوع.",color=muted,fontSize=11.sp)
+      Button(onClick={activity.packageManager.getLaunchIntentForPackage(selected!!.pkg)?.let{activity.startActivity(it)}},modifier=Modifier.fillMaxWidth()){Text("Open app")}
+      OutlinedButton(onClick={refresh++},modifier=Modifier.fillMaxWidth()){Text("Refresh discovered actions")}
      }}
      Spacer(Modifier.height(10.dp))
      Text("DISCOVERED ACTIONS ("+actions.size+")",color=fg,fontWeight=FontWeight.Bold)
@@ -86,6 +96,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
          Spacer(Modifier.width(9.dp))
          Column(Modifier.weight(1f)){Text(a.label,color=fg,fontSize=13.sp);if(a.id.isNotBlank())Text(a.id,color=muted,fontSize=9.sp)}
          Icon(if(checked)Icons.Default.CheckCircle else Icons.Default.AddCircleOutline,null,tint=accent)
+         if(a.clickable) TextButton(onClick={activity.getSharedPreferences("automation_runtime",0).edit().putString("click_package",selected!!.pkg).putString("click_label",a.label).apply();activity.packageManager.getLaunchIntentForPackage(selected!!.pkg)?.let{activity.startActivity(it)}}){Text("Run")}
         }
        }
       }
@@ -105,7 +116,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
      }
      1->{
       Text("Installed apps",color=fg,fontSize=25.sp,fontWeight=FontWeight.Bold)
-      Text("System and downloaded apps",color=muted,fontSize=12.sp)
+      Text("Apps visible in your app drawer",color=muted,fontSize=12.sp)
       Spacer(Modifier.height(10.dp))
       Row(Modifier.fillMaxWidth().background(panel,RoundedCornerShape(12.dp)).padding(12.dp),verticalAlignment=Alignment.CenterVertically){
        Icon(Icons.Default.Search,null,tint=muted);Spacer(Modifier.width(8.dp))
@@ -114,11 +125,11 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
       Spacer(Modifier.height(8.dp))
       LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)){
        items(apps.filter{it.label.contains(search,true)||it.pkg.contains(search,true)}){app->
-        Card(Modifier.fillMaxWidth().clickable{selected=app},colors=CardDefaults.cardColors(containerColor=panel)){
+        Card(Modifier.fillMaxWidth().clickable{selected=app;chosenPackage=app.pkg},colors=CardDefaults.cardColors(containerColor=panel)){
          Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically){
-          Box(Modifier.size(38.dp).background(accent.copy(alpha=.18f),RoundedCornerShape(10.dp)),contentAlignment=Alignment.Center){Text(app.label.take(1).uppercase(),color=accent,fontWeight=FontWeight.Bold)}
+          Image(bitmap=remember(app.pkg){activity.packageManager.getApplicationIcon(app.pkg).toBitmap(96,96).asImageBitmap()},contentDescription=app.label,modifier=Modifier.size(42.dp),contentScale=ContentScale.Fit)
           Spacer(Modifier.width(10.dp))
-          Column(Modifier.weight(1f)){Text(app.label,color=fg);Text(if(app.system)"SYSTEM APP"else"INSTALLED APP",color=muted,fontSize=9.sp)}
+          Column(Modifier.weight(1f)){Text(app.label,color=fg);Text(app.pkg,color=muted,fontSize=9.sp)}
           Icon(Icons.Default.ChevronRight,null,tint=muted)
          }
         }
@@ -138,7 +149,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
        }}
        OutlinedButton(onClick={tab=1},modifier=Modifier.fillMaxWidth()){Text("Choose app actions")}
        Button(onClick={
-        val target=selected?.pkg
+        val target=chosenPackage
         if(target!=null&&chosen.isNotEmpty()){
          TimePickerDialog(activity,{_,hour,minute->
           val cal=Calendar.getInstance().apply{set(Calendar.HOUR_OF_DAY,hour);set(Calendar.MINUTE,minute);set(Calendar.SECOND,0);if(timeInMillis<=System.currentTimeMillis())add(Calendar.DAY_OF_YEAR,1)}
@@ -151,7 +162,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
           saveTasks(activity,tasks);chosen=emptyList()
          },9,0,true).show()
         }
-       },enabled=chosen.isNotEmpty()&&selected!=null,modifier=Modifier.fillMaxWidth()){Text("Schedule routine")}
+       },enabled=chosen.isNotEmpty()&&chosenPackage!=null,modifier=Modifier.fillMaxWidth()){Text("Schedule routine")}
       }}
       Spacer(Modifier.height(12.dp));Text("SAVED AUTOMATIONS",color=muted,fontSize=11.sp,fontWeight=FontWeight.Bold)
       LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)){items(tasks){t->Card(colors=CardDefaults.cardColors(containerColor=panel)){Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Alarm,null,tint=accent);Spacer(Modifier.width(8.dp));Column{Text(t.optString("name"),color=fg);Text(t.optString("time"),color=muted,fontSize=11.sp)}}}}}
