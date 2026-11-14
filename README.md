@@ -1,14 +1,11 @@
-# Offline Music
+# Sleep Assistant
 
-An Android offline-first music player for audio files stored on the device.
+Android automation companion focused on reducing routine phone interactions.
 
-## Features
-- Reads local audio through Android MediaStore after permission is granted.
-- Songs, albums, artists, search, and favorites.
-- Background playback through Media3 MediaSessionService.
-- Lock-screen and notification media controls supplied by Android Media3.
-- No account, server, or network permission.
+## First milestone
+- Interactive dark dashboard
+- Installed-app discovery
+- Do Not Disturb quick action and scheduled DND receiver
+- Visual task creation prototype
 
-## Build
-Open with Android Studio or run `gradle assembleDebug` with JDK 17 and Android SDK 35.
-The GitHub Actions workflow builds a debug APK and uploads it as an artifact.
+The app does not collect or store the device lock-screen PIN. Android's secure lock screen remains under Android's control. Additional automation actions will be added incrementally and tested on-device.
