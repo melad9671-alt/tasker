@@ -10,6 +10,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.DisposableEffect
 import android.os.Bundle
+import android.widget.Toast
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -48,6 +49,7 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
  var selected by remember{mutableStateOf<AppItem?>(null)}
  var search by remember{mutableStateOf("")}
  var refresh by remember{mutableIntStateOf(0)}
+ var showAccessibilityGuide by remember{mutableStateOf(false)}
  var chosen by remember{mutableStateOf(listOf<ActionItem>())}
  var chosenPackage by remember{mutableStateOf<String?>(null)}
  DisposableEffect(activity){ val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_RESUME)refresh++};activity.lifecycle.addObserver(observer);onDispose{activity.lifecycle.removeObserver(observer)} }
@@ -172,12 +174,26 @@ class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:
       Card(colors=CardDefaults.cardColors(containerColor=panel)){Column(Modifier.padding(14.dp)){
        Text("Accessibility service",color=fg,fontWeight=FontWeight.Bold)
        Text(if(enabled)"Enabled"else"Required to discover app controls",color=muted,fontSize=11.sp)
-       Button(onClick={activity.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))},modifier=Modifier.fillMaxWidth()){Text("Open Accessibility settings")}
+       Button(onClick={showAccessibilityGuide=true},modifier=Modifier.fillMaxWidth()){Text("Set up Accessibility")}
       }}
       Text("Only controls exposed to Android Accessibility can be discovered. Protected screens may not be accessible.",color=muted,fontSize=12.sp)
      }
     }
    }
+  }
+  if(showAccessibilityGuide){
+   AlertDialog(
+    onDismissRequest={showAccessibilityGuide=false},
+    title={Text("Enable Sleepless Accessibility")},
+    text={Text("Sleepless uses Accessibility only to discover visible app controls and run the actions you configure. On the next screen, find Sleepless under downloaded/installed services and enable it.\n\nIf Android shows “Restricted settings” or keeps the switch disabled, this is an Android security restriction for some sideloaded apps. The app cannot remove that restriction. If your Android version offers it, open Settings > Apps > Sleepless > the three-dot menu > Allow restricted settings, then return here and try again.")},
+    confirmButton={TextButton(onClick={
+     showAccessibilityGuide=false
+     try{activity.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))}
+     catch(_:ActivityNotFoundException){Toast.makeText(activity,"Accessibility settings are unavailable on this device.",Toast.LENGTH_LONG).show()}
+     catch(_:SecurityException){Toast.makeText(activity,"Android blocked opening Accessibility settings. Open them manually from System Settings.",Toast.LENGTH_LONG).show()}
+    }){Text("Open settings")}},
+    dismissButton={TextButton(onClick={showAccessibilityGuide=false}){Text("Not now")}}
+   )
   }
  }
 }
