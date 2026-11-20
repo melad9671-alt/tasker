@@ -693,7 +693,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
             it.album.contains(search, true)
     }.let { list ->
         if (sortMode == "date") list.sortedBy { if (newestFirst) -it.dateModified else it.dateModified }
-        else list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title }.let { comparator ->
+        else list.sortedWith(compareBy<Track, String>(String.CASE_INSENSITIVE_ORDER) { it.title }.let { comparator ->
             if (ascendingAZ) comparator else comparator.reversed()
         })
     }
