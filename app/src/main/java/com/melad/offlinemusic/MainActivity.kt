@@ -198,7 +198,7 @@ private fun ArtistArtwork(artist: String, version: Int, modifier: Modifier = Mod
 }
 
 
-private fun readTrackLyrics(context: Context, file: DocumentFile): String? {
+private fun readTrackLyrics(context: Context, file: DocumentFile, trackTitle: String? = null): String? {
     if (file.name.orEmpty().endsWith(".mp3", true)) {
         val embedded = runCatching {
             context.contentResolver.openInputStream(file.uri)?.use { input ->
@@ -243,8 +243,13 @@ private fun readTrackLyrics(context: Context, file: DocumentFile): String? {
         if (!embedded.isNullOrBlank()) return embedded
     }
     val base = file.name.orEmpty().substringBeforeLast('.', file.name.orEmpty())
-    val sibling = runCatching { file.parentFile?.listFiles()?.firstOrNull {
-        val n = it.name.orEmpty(); n.equals("$base.lrc", true) || n.equals("$base.txt", true)
+    fun normalizeLyricsName(value: String): String = value.lowercase().filter { it.isLetterOrDigit() }
+    val acceptedNames = setOf(normalizeLyricsName(base), normalizeLyricsName(trackTitle.orEmpty())).filter { it.isNotBlank() }.toSet()
+    val sibling = runCatching { file.parentFile?.listFiles()?.firstOrNull { candidate ->
+        val candidateName = candidate.name.orEmpty()
+        val extension = candidateName.substringAfterLast('.', "").lowercase()
+        extension in setOf("lrc", "txt") &&
+            normalizeLyricsName(candidateName.substringBeforeLast('.', candidateName)) in acceptedNames
     } }.getOrNull()
     return runCatching { sibling?.let { context.contentResolver.openInputStream(it.uri)?.bufferedReader()?.use { reader -> reader.readText() } } }.getOrNull()
 }
@@ -530,7 +535,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
         val selected = currentTrack
         if (showLyrics && selected != null && selected.lyrics.isNullOrBlank()) {
             val found = withContext(Dispatchers.IO) {
-                DocumentFile.fromSingleUri(context, selected.uri)?.let { readTrackLyrics(context, it) }
+                DocumentFile.fromSingleUri(context, selected.uri)?.let { readTrackLyrics(context, it, selected.title) }
             }
             if (!found.isNullOrBlank()) {
                 tracks = tracks.map { if (it.id == selected.id) it.copy(lyrics = found) else it }
@@ -605,7 +610,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 Spacer(Modifier.width(9.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(currentTrack.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
-                                    Text(currentTrack.artist, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(currentTrack.artist, color = mutedText, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 IconButton(onClick = { if (playing) controller?.pause() else controller?.play() }) { Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = "Play or pause") }
                                 IconButton(onClick = { controller?.seekToNextMediaItem() }) { Icon(Icons.Filled.SkipNext, contentDescription = "Next") }
@@ -706,13 +711,13 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Music folder", fontWeight = FontWeight.Bold)
-                                    Text("Only scan songs inside this folder", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                    Text("Only scan songs inside this folder", color = mutedText, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                             Spacer(Modifier.height(14.dp))
                             Text(
                                 if (folderUri == null) "No folder selected yet" else "A music folder is selected. The app scans audio files inside it and its subfolders only.",
-                                color = Color.LightGray,
+                                color = mutedText,
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Spacer(Modifier.height(12.dp))
@@ -731,7 +736,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         }
                     }
                     Spacer(Modifier.height(14.dp))
-                    Text("Your audio files stay on your device. The app does not upload them.", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                    Text("Your audio files stay on your device. The app does not upload them.", color = mutedText, style = MaterialTheme.typography.bodySmall)
                 } else if (folderUri == null) {
                     Card(
                         Modifier.fillMaxWidth().padding(top = 34.dp),
@@ -759,7 +764,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = accentColor)
                             Spacer(Modifier.height(12.dp))
-                            Text("Scanning your music folder…", color = Color.LightGray)
+                            Text("Scanning your music folder…", color = mutedText)
                         }
                     }
                 } else if (tracks.isEmpty()) {
@@ -768,7 +773,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             Icon(Icons.Filled.MusicNote, contentDescription = null, tint = accentColor, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(12.dp))
                             Text("No music found in this folder", fontWeight = FontWeight.Bold)
-                            Text("Add your songs here, or choose a different folder in Settings.", color = Color.LightGray)
+                            Text("Add your songs here, or choose a different folder in Settings.", color = mutedText)
                             Spacer(Modifier.height(12.dp))
                             TextButton(onClick = { refreshRequest++ }) { Text("Refresh folder") }
                             TextButton(onClick = { tab = "Settings" }) { Text("Change music folder") }
@@ -788,7 +793,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.LibraryMusic, tint = accentColor, contentDescription = null)
                                     Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.SemiBold); Text("${playlistTracks.size} tracks", color = Color.LightGray) }
+                                    Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.SemiBold); Text("${playlistTracks.size} tracks", color = mutedText) }
                                     TextButton(onClick = { tracks.firstOrNull()?.let { t -> prefs.edit().putStringSet("playlist_$name", ids + t.id.toString()).apply() } }) { Text("Add first song") }
                                 }
                             }
@@ -805,14 +810,14 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 }
                                 Column(Modifier.weight(1f)) {
                                     Text(group, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(if (pageTab == "Albums") "Album" else "Artist", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                    Text(if (pageTab == "Albums") "Album" else "Artist", color = mutedText, style = MaterialTheme.typography.bodySmall)
                                 }
-                                Text("${groupTracks.size} songs", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
+                                Text("${groupTracks.size} songs", color = mutedText, style = MaterialTheme.typography.labelMedium)
                             }
                         }
                         item {
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFF251817)).padding(18.dp),
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(panelColor).padding(18.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (pageTab == "Artists") {
@@ -824,7 +829,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 Spacer(Modifier.width(14.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(group, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text("${groupTracks.size} songs in your library", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                    Text("${groupTracks.size} songs in your library", color = mutedText, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
@@ -841,7 +846,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         items(groupTracks, key = { it.id }) { track ->
                             Row(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
-                                    .background(if (currentId == track.id.toString()) Color(0xFF2A2020) else panelColor)
+                                    .background(if (currentId == track.id.toString()) accentSoft else panelColor)
                                     .clickable { playList(groupTracks, track) }
                                     .padding(horizontal = 10.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -850,11 +855,11 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 Spacer(Modifier.width(11.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                    Text(if (pageTab == "Albums") track.artist else track.album, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                    Text(if (pageTab == "Albums") track.artist else track.album, maxLines = 1, overflow = TextOverflow.Ellipsis, color = mutedText, style = MaterialTheme.typography.bodySmall)
                                 }
-                                Text(formatTime(track.duration), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                                Text(formatTime(track.duration), color = mutedText, style = MaterialTheme.typography.labelSmall)
                                 IconButton(onClick = { toggleFavorite(track) }) {
-                                    Icon(Icons.Filled.Favorite, contentDescription = "Favorite", tint = if (favorites.contains(track.id.toString())) accentColor else Color.Gray)
+                                    Icon(Icons.Filled.Favorite, contentDescription = "Favorite", tint = if (favorites.contains(track.id.toString())) accentColor else mutedText)
                                 }
                             }
                         }
@@ -890,7 +895,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 else { val cover = groupTracks.firstOrNull(); AlbumArtwork(cover?.artworkUri, Modifier.size(96.dp).clip(CircleShape), artworkData = cover?.artworkData) }
                                 Spacer(Modifier.height(7.dp))
                                 Text(group, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                Text("${groupTracks.size} tracks", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                Text("${groupTracks.size} tracks", color = mutedText, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -898,7 +903,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(pageTab, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
-                        Text(filtered.size.toString() + " tracks", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
+                        Text(filtered.size.toString() + " tracks", color = mutedText, style = MaterialTheme.typography.labelMedium)
                     }
                     if (scanning) {
                         Text("Scanning… ${tracks.size} songs found", color = accentColor, style = MaterialTheme.typography.labelSmall)
@@ -939,13 +944,13 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 Spacer(Modifier.width(11.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                    Text(track.artist + " • " + track.album, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                    Text(track.artist + " • " + track.album, maxLines = 1, overflow = TextOverflow.Ellipsis, color = mutedText, style = MaterialTheme.typography.bodySmall)
                                 }
                                 IconButton(onClick = { toggleFavorite(track) }) {
                                     Icon(
                                         Icons.Filled.Favorite,
                                         contentDescription = "Favorite",
-                                        tint = if (favorites.contains(track.id.toString())) accentColor else Color.Gray
+                                        tint = if (favorites.contains(track.id.toString())) accentColor else mutedText
                                     )
                                 }
                                 Box {
@@ -1070,9 +1075,9 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             items(lines.size) { i ->
                                 val text = lines[i].second
                                 if (i == active) Box {
-                                    Text(text, color = Color(0xFF66716A), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                    Text(text, color = mutedText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                                     Text(text, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.drawWithContent { clipRect(right = size.width * fill) { this@drawWithContent.drawContent() } })
-                                } else Text(text, color = if (i < active) Color.LightGray else Color(0xFF657069), style = MaterialTheme.typography.titleLarge)
+                                } else Text(text, color = if (i < active) mutedText else mutedText, style = MaterialTheme.typography.titleLarge)
                             }
                         }
                     }
@@ -1110,10 +1115,10 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(currentTrack.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(currentTrack.artist, color = Color.LightGray, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(currentTrack.artist, color = mutedText, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             IconButton(onClick = { toggleFavorite(currentTrack) }) {
-                                Icon(Icons.Filled.Favorite, contentDescription = "Favorite", tint = if (favorites.contains(currentTrack.id.toString())) accentColor else Color.LightGray)
+                                Icon(Icons.Filled.Favorite, contentDescription = "Favorite", tint = if (favorites.contains(currentTrack.id.toString())) accentColor else mutedText)
                             }
                         }
                         Spacer(Modifier.height(18.dp))
@@ -1141,7 +1146,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Spacer(Modifier.height(10.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { shuffle = !shuffle; controller?.shuffleModeEnabled = shuffle }) {
-                                Icon(Icons.Filled.Shuffle, contentDescription = "Shuffle", tint = if (shuffle) accentColor else Color.LightGray)
+                                Icon(Icons.Filled.Shuffle, contentDescription = "Shuffle", tint = if (shuffle) accentColor else mutedText)
                             }
                             IconButton(onClick = { controller?.seekToPreviousMediaItem() }) { Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(38.dp)) }
                             IconButton(onClick = { if (playing) controller?.pause() else controller?.play() }, modifier = Modifier.size(68.dp).background(accentColor, CircleShape)) {
@@ -1151,7 +1156,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             IconButton(onClick = {
                                 repeat = when (repeat) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }
                                 controller?.repeatMode = repeat
-                            }) { Icon(Icons.Filled.Repeat, contentDescription = "Repeat", tint = if (repeat == Player.REPEAT_MODE_OFF) Color.LightGray else accentColor) }
+                            }) { Icon(Icons.Filled.Repeat, contentDescription = "Repeat", tint = if (repeat == Player.REPEAT_MODE_OFF) mutedText else accentColor) }
                         }
                         Spacer(Modifier.weight(0.65f))
                     }
