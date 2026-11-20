@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -161,6 +162,10 @@ fun NexoraApp() {
                                 activeId = task.id
                                 remaining = task.minutes * 60
                                 running = true
+                            }, onDelete = {
+                                if (activeId == task.id) { running = false; activeId = null; remaining = 0 }
+                                tasks = tasks.filterNot { it.id == task.id }
+                                saveTasks(prefs, tasks)
                             })
                         }
                     }
@@ -218,7 +223,7 @@ fun TabPill(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun TaskCard(task: PlanTask, onStart: () -> Unit) {
+fun TaskCard(task: PlanTask, onStart: () -> Unit, onDelete: () -> Unit) {
     val tint = when (task.category) { "study" -> Purple; "break" -> Color.White; "commute" -> Color(0xFF69B8D6); else -> Color(0xFFE4A45D) }
     Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -232,6 +237,7 @@ fun TaskCard(task: PlanTask, onStart: () -> Unit) {
             else {
                 IconButton(onClick = onStart) { Icon(Icons.Default.PlayArrow, "Start timer", tint = Purple) }
             }
+            IconButton(onClick = onDelete) { Icon(Icons.Default.DeleteOutline, "Delete task", tint = Muted) }
         }
     }
 }
