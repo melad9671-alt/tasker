@@ -123,7 +123,21 @@ fun NexoraApp() {
                             Text("Generate")
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
+                    val visibleTasks = tasks.filter { it.period == selectedTab }
+                    val completedCount = visibleTasks.count { it.done }
+                    if (visibleTasks.isNotEmpty()) {
+                        Text("$completedCount of ${visibleTasks.size} tasks completed", color = Muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(7.dp))
+                        LinearProgressIndicator(
+                            progress = { completedCount.toFloat() / visibleTasks.size.toFloat() },
+                            modifier = Modifier.fillMaxWidth().height(6.dp),
+                            color = Purple,
+                            trackColor = Panel
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    } else {
+                        Spacer(Modifier.height(12.dp))
+                    }
                     if (activeId != null) {
                         Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF29203C)), shape = RoundedCornerShape(22.dp)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -147,9 +161,6 @@ fun NexoraApp() {
                                 activeId = task.id
                                 remaining = task.minutes * 60
                                 running = true
-                            }, onDone = {
-                                tasks = tasks.map { if (it.id == task.id) it.copy(done = true) else it }
-                                saveTasks(prefs, tasks)
                             })
                         }
                     }
@@ -207,7 +218,7 @@ fun TabPill(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun TaskCard(task: PlanTask, onStart: () -> Unit, onDone: () -> Unit) {
+fun TaskCard(task: PlanTask, onStart: () -> Unit) {
     val tint = when (task.category) { "study" -> Purple; "break" -> Color.White; "commute" -> Color(0xFF69B8D6); else -> Color(0xFFE4A45D) }
     Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -218,10 +229,8 @@ fun TaskCard(task: PlanTask, onStart: () -> Unit, onDone: () -> Unit) {
                 Text("${task.minutes} min  ·  ${task.category.uppercase()}", color = Muted, fontSize = 11.sp)
             }
             if (task.done) Text("DONE", color = Color(0xFF70C99B), fontSize = 11.sp)
-            else if (task.category == "study" || task.category == "custom") {
-                IconButton(onClick = onStart) { Icon(Icons.Default.PlayArrow, "Start", tint = Purple) }
-            } else {
-                TextButton(onClick = onDone) { Text("Done") }
+            else {
+                IconButton(onClick = onStart) { Icon(Icons.Default.PlayArrow, "Start timer", tint = Purple) }
             }
         }
     }
