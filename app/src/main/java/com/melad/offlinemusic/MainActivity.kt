@@ -641,9 +641,8 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 if (pageTab == "Artists") {
                                     ArtistArtwork(group, artistImagesVersion, Modifier.size(76.dp))
                                 } else {
-                                    Box(Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF3A2424)), contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Filled.Album, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(38.dp))
-                                    }
+                                    val albumCover = groupTracks.firstOrNull()
+                                    AlbumArtwork(albumCover?.artworkUri, Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)), artworkData = albumCover?.artworkData)
                                 }
                                 Spacer(Modifier.width(14.dp))
                                 Column(Modifier.weight(1f)) {
@@ -725,9 +724,8 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                     if (pageTab == "Artists") {
                                         ArtistArtwork(group, artistImagesVersion, Modifier.size(52.dp))
                                     } else {
-                                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF352222)), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Filled.Album, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
-                                        }
+                                        val albumCover = groupTracks.firstOrNull()
+                                        AlbumArtwork(albumCover?.artworkUri, Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)), artworkData = albumCover?.artworkData)
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
