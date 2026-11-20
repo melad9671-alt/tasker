@@ -202,7 +202,7 @@ private fun ArtistArtwork(artist: String, version: Int, modifier: Modifier = Mod
 }
 
 
-private fun readTrackLyrics(context: Context, file: DocumentFile, trackTitle: String? = null): String? {
+private fun readTrackLyrics(context: Context, file: DocumentFile): String? {
     if (file.name.orEmpty().endsWith(".mp3", true)) {
         val embedded = runCatching {
             context.contentResolver.openInputStream(file.uri)?.use { input ->
@@ -312,7 +312,7 @@ private fun parseLyricsLines(raw: String): List<Pair<Long?, String>> =
         val timestamps = Regex("\\[(\\d{1,2}):(\\d{2})(?:[.:](\\d{1,3}))?]").findAll(line).toList()
         if (timestamps.isEmpty()) {
             val clean = line.trim()
-            if (clean.isBlank() || Regex("^\\[[a-zA-Z]{1,3}:.*]").matches(clean)) emptyList()
+            if (clean.isBlank() || Regex("^\\[[^\\]]+:[^\\]]*]$").matches(clean)) emptyList()
             else listOf(null to clean)
         } else {
             val lyricText = line.substringAfterLast(']').trim()
@@ -603,7 +603,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                 context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                     if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
                 }.orEmpty()
-            }.getOrDefault("")
+            }.getOrDefault("").ifBlank { uri.lastPathSegment.orEmpty() }
             val extension = displayName.substringAfterLast('.', "").lowercase()
             val mime = context.contentResolver.getType(uri).orEmpty()
             val supported = extension in setOf("lrc", "txt") || mime.startsWith("text/")
@@ -632,7 +632,11 @@ private fun OfflineMusicApp(controller: MediaController?) {
         val selected = currentTrack
         if (showLyrics && selected != null && selected.lyrics.isNullOrBlank()) {
             val found = withContext(Dispatchers.IO) {
-                folderUri?.let { root -> findTrackDocument(context, root, selected.uri)?.let { readTrackLyrics(context, it, selected.title) } }
+                folderUri?.let { root ->
+                    val trackDocument = findTrackDocument(context, root, selected.uri)
+                    trackDocument?.let { readTrackLyrics(context, it) }
+                        ?: findMatchingLyrics(context, root, selected.uri, selected.title, selected.artist)
+                }
             }
             if (!found.isNullOrBlank()) {
                 tracks = tracks.map { if (it.id == selected.id) it.copy(lyrics = found) else it }
@@ -1383,11 +1387,11 @@ private fun AlbumArtwork(uri: Uri?, modifier: Modifier = Modifier, large: Boolea
             }.getOrNull()
         }
     }
-    Box(modifier.background(Color(0xFF26372B)), contentAlignment = Alignment.Center) {
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
         if (bitmap != null) {
             Image(bitmap = bitmap!!, contentDescription = "Album artwork", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else {
-            Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color(0xFF1ED760), modifier = Modifier.size(if (large) 92.dp else 24.dp))
+            Icon(Icons.Filled.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(if (large) 92.dp else 24.dp))
         }
     }
 }
