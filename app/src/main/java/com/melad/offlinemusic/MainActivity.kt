@@ -315,7 +315,14 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             selected = tab == item.first,
                             onClick = { tab = item.first; selectedGroup = null },
                             icon = { Icon(item.second, contentDescription = item.third) },
-                            label = { Text(item.third) }
+                            label = { Text(item.third) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color(0xFFE7DDF0),
+                                selectedTextColor = Color(0xFFE7DDF0),
+                                indicatorColor = Color(0xFF51445D),
+                                unselectedIconColor = Color(0xFFC9C3CF),
+                                unselectedTextColor = Color(0xFFC9C3CF)
+                            )
                         )
                     }
                 }
