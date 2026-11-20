@@ -35,6 +35,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -113,25 +116,29 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun loadTracks(context: Context, treeUri: Uri): List<Track> {
-    val root = runCatching { DocumentFile.fromTreeUri(context, treeUri) }.getOrNull() ?: return emptyList()
-    val files = linkedMapOf<String, DocumentFile>()
+private fun loadTracks(context: Context, treeUri: Uri, existing: List<Track> = emptyList()): List<Track> {
+    val root = runCatching { DocumentFile.fromTreeUri(context, treeUri) }.getOrNull() ?: return existing
+    val allFiles = mutableListOf<DocumentFile>()
     val pending = ArrayDeque<DocumentFile>()
     pending.add(root)
     while (pending.isNotEmpty()) {
         val folder = pending.removeFirst()
-        val children = runCatching { folder.listFiles().toList() }.getOrDefault(emptyList())
-        children.forEach { file ->
-            if (file.isDirectory) pending.add(file)
-            else {
-                val name = file.name.orEmpty().lowercase()
-                val extensions = listOf(".mp3", ".m4a", ".m4b", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma", ".aiff", ".aif", ".3gp", ".amr")
-                val isAudio = extensions.any { name.endsWith(it) } || file.type?.startsWith("audio/", ignoreCase = true) == true
-                if (isAudio) files[file.uri.toString()] = file
-            }
+        runCatching { folder.listFiles().toList() }.getOrDefault(emptyList()).forEach { file ->
+            if (file.isDirectory) pending.add(file) else allFiles.add(file)
         }
     }
-    return files.values.map { file ->
+
+    val audioExtensions = listOf(".mp3", ".m4a", ".m4b", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma", ".aiff", ".aif", ".3gp", ".amr")
+    val imageExtensions = listOf(".jpg", ".jpeg", ".png", ".webp")
+    val audioFiles = allFiles.filter { file ->
+        val name = file.name.orEmpty().lowercase()
+        audioExtensions.any { name.endsWith(it) } || file.type?.startsWith("audio/", ignoreCase = true) == true
+    }
+    val existingByUri = existing.associateBy { it.uri.toString() }
+    val discoveredUris = audioFiles.map { it.uri.toString() }.toSet()
+    val retained = existing.filter { discoveredUris.contains(it.uri.toString()) }.associateBy { it.uri.toString() }
+
+    val added = audioFiles.filterNot { existingByUri.containsKey(it.uri.toString()) }.map { file ->
         val fallbackTitle = file.name?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Unknown title"
         val retriever = MediaMetadataRetriever()
         val opened = runCatching { retriever.setDataSource(context, file.uri); true }.getOrDefault(false)
@@ -140,10 +147,71 @@ private fun loadTracks(context: Context, treeUri: Uri): List<Track> {
         val artist = metadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "Unknown artist"
         val album = metadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: "Unknown album"
         val duration = metadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-        val artworkData = if (opened) runCatching { retriever.embeddedPicture }.getOrNull() else null
+        var artworkData = if (opened) runCatching { retriever.embeddedPicture }.getOrNull() else null
         runCatching { retriever.release() }
-        Track(file.uri.toString().hashCode().toLong(), title, artist, album, duration, file.uri, null, artworkData)
-    }.sortedBy { it.title.lowercase() }
+
+        // SnapTube downloads commonly keep the cover as a separate image beside the MP3.
+        if (artworkData == null) {
+            val parentFiles = runCatching { file.parentFile?.listFiles()?.toList() }.getOrNull().orEmpty()
+            val baseName = file.name.orEmpty().substringBeforeLast('.', file.name.orEmpty()).lowercase()
+            val companion = parentFiles.firstOrNull { candidate ->
+                val candidateName = candidate.name.orEmpty().lowercase()
+                imageExtensions.any { candidateName.endsWith(it) } &&
+                    (candidateName.substringBeforeLast('.') == baseName ||
+                     candidateName in listOf("cover.jpg", "cover.jpeg", "folder.jpg", "folder.png", "album.jpg", "album.png", "front.jpg", "artwork.jpg"))
+            }
+            if (companion != null) {
+                artworkData = runCatching {
+                    context.contentResolver.openInputStream(companion.uri)?.use { it.readBytes() }
+                }.getOrNull()
+            }
+        }
+        val id = file.uri.toString().hashCode().toLong()
+        Track(id, title, artist, album, duration, file.uri, null, artworkData)
+    }
+
+    return (retained.values + added).sortedBy { it.title.lowercase() }
+}
+
+private fun saveTrackCache(context: Context, folderUri: Uri, tracks: List<Track>) {
+    val artDir = java.io.File(context.filesDir, "artwork_cache").apply { mkdirs() }
+    val json = org.json.JSONArray()
+    tracks.forEach { track ->
+        val artFile = java.io.File(artDir, "${track.id}.img")
+        if (track.artworkData != null) runCatching { artFile.writeBytes(track.artworkData) }
+        else if (artFile.exists()) runCatching { artFile.delete() }
+        json.put(org.json.JSONObject().apply {
+            put("id", track.id)
+            put("title", track.title)
+            put("artist", track.artist)
+            put("album", track.album)
+            put("duration", track.duration)
+            put("uri", track.uri.toString())
+            put("hasArtwork", track.artworkData != null && artFile.exists())
+        })
+    }
+    context.getSharedPreferences("offline_music", Context.MODE_PRIVATE).edit()
+        .putString("cached_folder_uri", folderUri.toString())
+        .putString("cached_tracks", json.toString())
+        .apply()
+}
+
+private fun loadTrackCache(context: Context, folderUri: Uri): List<Track>? {
+    val prefs = context.getSharedPreferences("offline_music", Context.MODE_PRIVATE)
+    if (prefs.getString("cached_folder_uri", null) != folderUri.toString()) return null
+    val raw = prefs.getString("cached_tracks", null) ?: return null
+    return runCatching {
+        val array = org.json.JSONArray(raw)
+        val artDir = java.io.File(context.filesDir, "artwork_cache")
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.getJSONObject(index)
+            val uri = Uri.parse(item.getString("uri"))
+            val id = item.getLong("id")
+            val artFile = java.io.File(artDir, "${id}.img")
+            val art = if (item.optBoolean("hasArtwork") && artFile.exists()) runCatching { artFile.readBytes() }.getOrNull() else null
+            Track(id, item.getString("title"), item.getString("artist"), item.getString("album"), item.optLong("duration"), uri, null, art)
+        }
+    }.getOrNull()
 }
 private fun Track.toMediaItem(): MediaItem =
     MediaItem.Builder()
@@ -190,6 +258,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var playlistNames by remember { mutableStateOf(prefs.getStringSet("playlist_names", emptySet())?.toSet() ?: emptySet()) }
     var recentIds by remember { mutableStateOf(prefs.getString("recent_ids", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()) }
     var splashVisible by remember { mutableStateOf(true) }
+    val songsListState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         delay(2450)
@@ -211,16 +280,37 @@ private fun OfflineMusicApp(controller: MediaController?) {
         }
     }
 
-    LaunchedEffect(folderUri, refreshRequest) {
+    LaunchedEffect(folderUri) {
         val selectedUri = folderUri
         if (selectedUri == null) {
             tracks = emptyList()
             scanning = false
         } else {
-            scanning = true
-            tracks = withContext(Dispatchers.IO) {
-                runCatching { loadTracks(context, selectedUri) }.getOrDefault(emptyList())
+            val cached = withContext(Dispatchers.IO) { loadTrackCache(context, selectedUri) }
+            if (cached != null) {
+                tracks = cached
+                scanning = false
+            } else {
+                scanning = true
+                val firstScan = withContext(Dispatchers.IO) {
+                    runCatching { loadTracks(context, selectedUri) }.getOrDefault(emptyList())
+                }
+                tracks = firstScan
+                withContext(Dispatchers.IO) { saveTrackCache(context, selectedUri, firstScan) }
+                scanning = false
             }
+        }
+    }
+
+    LaunchedEffect(folderUri, refreshRequest) {
+        val selectedUri = folderUri
+        if (refreshRequest > 0 && selectedUri != null) {
+            scanning = true
+            val updated = withContext(Dispatchers.IO) {
+                runCatching { loadTracks(context, selectedUri, tracks) }.getOrDefault(tracks)
+            }
+            tracks = updated
+            withContext(Dispatchers.IO) { saveTrackCache(context, selectedUri, updated) }
             scanning = false
         }
     }
@@ -503,7 +593,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                     .padding(horizontal = 10.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                AlbumArtwork(track.artworkUri, Modifier.size(48.dp).clip(RoundedCornerShape(9.dp)))
+                                AlbumArtwork(track.artworkUri, Modifier.size(48.dp).clip(RoundedCornerShape(9.dp)), artworkData = track.artworkData)
                                 Spacer(Modifier.width(11.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
@@ -548,7 +638,25 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Text(filtered.size.toString() + " tracks", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
                     }
                     Spacer(Modifier.height(8.dp))
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+                    LazyColumn(
+                        state = songsListState,
+                        modifier = Modifier.pointerInput(refreshRequest, scanning) {
+                            var dragDistance = 0f
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { change, amount ->
+                                    if (songsListState.firstVisibleItemIndex == 0 && amount > 0f) dragDistance += amount
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    if (dragDistance > 90f && !scanning) refreshRequest++
+                                    dragDistance = 0f
+                                },
+                                onDragCancel = { dragDistance = 0f }
+                            )
+                        },
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                        contentPadding = PaddingValues(bottom = 12.dp)
+                    ) {
                         items(filtered, key = { it.id }) { track ->
                             Row(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
@@ -557,7 +665,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                     .padding(horizontal = 11.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                AlbumArtwork(track.artworkUri, Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)))
+                                AlbumArtwork(track.artworkUri, Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)), artworkData = track.artworkData)
                                 Spacer(Modifier.width(11.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
