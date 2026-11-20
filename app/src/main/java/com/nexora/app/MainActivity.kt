@@ -1,6 +1,7 @@
 package com.nexora.app
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -197,7 +198,7 @@ fun Onboarding(name: String, onName: (String) -> Unit, stage: String, onStage: (
 
 @Composable
 fun TabPill(label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(Modifier.weight(1f).border(1.dp, if (selected) Purple else Color(0xFF292833), RoundedCornerShape(50)).background(if (selected) Color(0xFF2B2140) else Panel, RoundedCornerShape(50)).clickable { onClick() }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.width(100.dp).border(1.dp, if (selected) Purple else Color(0xFF292833), RoundedCornerShape(50)).background(if (selected) Color(0xFF2B2140) else Panel, RoundedCornerShape(50)).clickable { onClick() }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
         Text(label, color = if (selected) White else Muted, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
     }
 }
@@ -252,7 +253,7 @@ fun generatePlan(stage: String, period: String): List<PlanTask> {
     return result
 }
 
-fun saveTasks(context: Context, tasks: List<PlanTask>) {
+fun saveTasks(context: SharedPreferences, tasks: List<PlanTask>) {
     val array = JSONArray()
     tasks.forEach { t -> array.put(JSONObject().put("id", t.id).put("title", t.title).put("category", t.category).put("minutes", t.minutes).put("done", t.done)) }
     context.edit().putString("tasks", array.toString()).apply()
