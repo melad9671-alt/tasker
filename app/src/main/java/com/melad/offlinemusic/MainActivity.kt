@@ -481,6 +481,18 @@ private fun OfflineMusicApp(controller: MediaController?) {
     }
 
     val currentTrack = tracks.firstOrNull { it.id.toString() == currentId }
+    LaunchedEffect(showLyrics, currentTrack?.id) {
+        val selected = currentTrack
+        if (showLyrics && selected != null && selected.lyrics.isNullOrBlank()) {
+            val found = withContext(Dispatchers.IO) {
+                DocumentFile.fromSingleUri(context, selected.uri)?.let { readTrackLyrics(context, it) }
+            }
+            if (!found.isNullOrBlank()) {
+                tracks = tracks.map { if (it.id == selected.id) it.copy(lyrics = found) else it }
+                folderUri?.let { selectedFolder -> withContext(Dispatchers.IO) { saveTrackCache(context, selectedFolder, tracks) } }
+            }
+        }
+    }
     BackHandler(enabled = showLyrics || showQueue || showCreatePlaylist || trackToAdd != null || showPlayer || selectedGroup != null || tab != "Songs") {
         when { showLyrics -> showLyrics = false; showQueue -> showQueue = false; showCreatePlaylist -> showCreatePlaylist = false; trackToAdd != null -> trackToAdd = null; showPlayer -> showPlayer = false; selectedGroup != null -> selectedGroup = null; tab != "Songs" -> { tab = "Songs"; search = "" } }
     }
