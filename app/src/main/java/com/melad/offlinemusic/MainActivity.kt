@@ -201,9 +201,9 @@ private fun ArtistArtwork(artist: String, version: Int, modifier: Modifier = Mod
             }.getOrNull()
         }
     }
-    Box(modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xFF352222)), contentAlignment = Alignment.Center) {
+    Box(modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xFF1B3430)), contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap!!, contentDescription = "$artist artist photo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else Icon(Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
+        else Icon(Icons.Filled.Person, contentDescription = null, tint = Color(0xFF75D6C1), modifier = Modifier.size(27.dp))
     }
 }
 
@@ -656,15 +656,18 @@ private fun OfflineMusicApp(controller: MediaController?) {
             }
         }
     }
-    BackHandler(enabled = showSettingsMenu || showLyrics || showQueue || showCreatePlaylist || trackToAdd != null || showPlayer || selectedGroup != null || tab != "Songs") {
+    BackHandler(enabled = showSettingsMenu || showFilterMenu || showPlaylistPicker || showLyrics || showQueue || showCreatePlaylist || trackToAdd != null || showPlayer || selectedGroup != null || selectedPlaylist != null || tab != "Songs") {
         when {
             showSettingsMenu -> showSettingsMenu = false
+            showFilterMenu -> showFilterMenu = false
+            showPlaylistPicker -> { showPlaylistPicker = false; targetPlaylistName = null }
             showLyrics -> showLyrics = false
             showQueue -> showQueue = false
             showCreatePlaylist -> showCreatePlaylist = false
             trackToAdd != null -> trackToAdd = null
             showPlayer -> showPlayer = false
             selectedGroup != null -> selectedGroup = null
+            selectedPlaylist != null -> selectedPlaylist = null
             tab != "Songs" -> { tab = "Songs"; search = "" }
         }
     }
@@ -1434,15 +1437,15 @@ private fun SplashScreen() {
     }
     val iconSize = androidx.compose.ui.unit.lerp(62.dp, 118.dp, expansion)
     val corner = (50f - expansion * 20f).coerceIn(28f, 50f)
-    Box(Modifier.fillMaxSize().background(Color(0xFF100D0D)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF102A28)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 Modifier.size(iconSize).offset(y = drop.value.dp)
                     .graphicsLayer { rotationZ = spin.value; scaleX = 0.78f + expansion * 0.22f; scaleY = 0.78f + expansion * 0.22f }
-                    .clip(RoundedCornerShape(corner.dp)).background(Color(0xFFE5393F)),
+                    .clip(RoundedCornerShape(corner.dp)).background(Color(0xFF187F72)),
                 contentAlignment = Alignment.Center
             ) {
-                Box(Modifier.size(76.dp * expansion.coerceAtLeast(0.25f)).clip(CircleShape).background(Color(0xFFB91F2A)), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(76.dp * expansion.coerceAtLeast(0.25f)).clip(CircleShape).background(Color(0xFF75D6C1)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp * expansion.coerceAtLeast(0.35f)))
                 }
             }
@@ -1454,7 +1457,7 @@ private fun SplashScreen() {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("OFFLINE MUSIC", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                     Spacer(Modifier.height(7.dp))
-                    Text("YOUR MUSIC. YOUR WORLD.", color = Color(0xFFFF777B), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text("YOUR MUSIC. YOUR WORLD.", color = Color(0xFF75D6C1), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
             }
         }
