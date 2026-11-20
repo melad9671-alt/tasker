@@ -303,7 +303,7 @@ private suspend fun loadTracks(
 
         // Publish small batches so the list grows progressively without flooding weak devices
         // with hundreds of Compose state updates in one burst.
-        if (batch.size >= 4) {
+        if (added.size == 1 || batch.size >= 4) {
             onBatch(batch.toList())
             batch.clear()
         }
@@ -841,9 +841,9 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Text(pageTab, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
                         Text(filtered.size.toString() + " tracks", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
+                    }
                     if (scanning) {
                         Text("Scanning… ${tracks.size} songs found", color = Color(0xFF1ED760), style = MaterialTheme.typography.labelSmall)
-                    }
                     }
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(
@@ -866,6 +866,10 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         contentPadding = PaddingValues(bottom = 12.dp)
                     ) {
                         items(filtered, key = { it.id }) { track ->
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeIn(tween(240)) + scaleIn(initialScale = 0.97f, animationSpec = tween(240))
+                            ) {
                             Row(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                                     .background(if (currentId == track.id.toString()) Color(0xFF1A2A20) else Color(0xFF121815))
@@ -889,6 +893,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                         tint = if (favorites.contains(track.id.toString())) Color(0xFF1ED760) else Color.Gray
                                     )
                                 }
+                            }
                             }
                         }
                     }
