@@ -776,7 +776,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                         withContext(Dispatchers.IO) {
                                             names.filterNot { artistArtworkFile(context, it).exists() }.chunked(5).forEach { batch ->
                                                 kotlinx.coroutines.coroutineScope {
-                                                    batch.map { name -> kotlinx.coroutines.async(Dispatchers.IO) { fetchArtistArtwork(context, name) } }.forEach { it.await() }
+                                                    batch.map { name -> async(Dispatchers.IO) { fetchArtistArtwork(context, name) } }.forEach { it.await() }
                                                 }
                                             }
                                         }
