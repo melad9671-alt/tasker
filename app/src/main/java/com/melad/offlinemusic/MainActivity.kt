@@ -196,6 +196,49 @@ private fun ArtistArtwork(artist: String, version: Int, modifier: Modifier = Mod
 
 
 private fun readTrackLyrics(context: Context, file: DocumentFile): String? {
+    if (file.name.orEmpty().endsWith(".mp3", true)) {
+        val embedded = runCatching {
+            context.contentResolver.openInputStream(file.uri)?.use { input ->
+                val bytes = input.readBytes()
+                if (bytes.size < 10 || bytes[0] != 73.toByte() || bytes[1] != 68.toByte() || bytes[2] != 51.toByte()) return@use null
+                val version = bytes[3].toInt() and 0xff
+                if (version !in 3..4) return@use null
+                val tagSize = ((bytes[6].toInt() and 0x7f) shl 21) or ((bytes[7].toInt() and 0x7f) shl 14) or ((bytes[8].toInt() and 0x7f) shl 7) or (bytes[9].toInt() and 0x7f)
+                var offset = 10
+                val end = minOf(bytes.size, 10 + tagSize)
+                while (offset + 10 <= end) {
+                    val id = String(bytes, offset, 4, Charsets.ISO_8859_1)
+                    if (id.all { it == 0.toChar() }) break
+                    val size = if (version == 4) {
+                        ((bytes[offset+4].toInt() and 0x7f) shl 21) or ((bytes[offset+5].toInt() and 0x7f) shl 14) or ((bytes[offset+6].toInt() and 0x7f) shl 7) or (bytes[offset+7].toInt() and 0x7f)
+                    } else {
+                        ((bytes[offset+4].toInt() and 0xff) shl 24) or ((bytes[offset+5].toInt() and 0xff) shl 16) or ((bytes[offset+6].toInt() and 0xff) shl 8) or (bytes[offset+7].toInt() and 0xff)
+                    }
+                    val start = offset + 10
+                    val finish = (start + size).coerceAtMost(end)
+                    if (id == "USLT" && finish > start + 4) {
+                        val encoding = bytes[start].toInt() and 0xff
+                        val body = start + 4
+                        val terminator = if (encoding == 1 || encoding == 2) {
+                            var p = body
+                            while (p + 1 < finish && !(bytes[p] == 0.toByte() && bytes[p+1] == 0.toByte()) p += 2
+                            p + 2
+                        } else {
+                            var p = body
+                            while (p < finish && bytes[p] != 0.toByte()) p++
+                            p + 1
+                        }
+                        val charset = when (encoding) { 1 -> Charsets.UTF_16; 2 -> Charsets.UTF_16BE; 3 -> Charsets.UTF_8; else -> Charsets.ISO_8859_1 }
+                        return@use String(bytes, terminator.coerceAtMost(finish), (finish - terminator).coerceAtLeast(0), charset).trim().takeIf { it.isNotBlank() }
+                    }
+                    if (size <= 0) break
+                    offset = finish
+                }
+                null
+            }
+        }.getOrNull()
+        if (!embedded.isNullOrBlank()) return embedded
+    }
     val base = file.name.orEmpty().substringBeforeLast('.', file.name.orEmpty())
     val sibling = runCatching { file.parentFile?.listFiles()?.firstOrNull {
         val n = it.name.orEmpty(); n.equals("$base.lrc", true) || n.equals("$base.txt", true)
