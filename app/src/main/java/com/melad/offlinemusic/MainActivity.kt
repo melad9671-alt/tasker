@@ -419,7 +419,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
     var showPlayerMenu by remember { mutableStateOf(false) }
-    var darkMode by remember { mutableStateOf(prefs.getBoolean("dark_mode", true)) }
+    var darkMode by remember { mutableStateOf(prefs.getBoolean("dark_mode", false)) }
     var songMenuTrack by remember { mutableStateOf<Track?>(null) }
     var songMenuExpanded by remember { mutableStateOf(false) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
