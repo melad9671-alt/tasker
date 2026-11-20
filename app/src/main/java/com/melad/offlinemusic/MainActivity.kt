@@ -492,6 +492,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
     var showPlayerMenu by remember { mutableStateOf(false) }
+    var showSettingsMenu by remember { mutableStateOf(false) }
     var darkMode by remember { mutableStateOf(prefs.getBoolean("dark_mode", false)) }
     var lyricsImportError by remember { mutableStateOf<String?>(null) }
     var songMenuTrack by remember { mutableStateOf<Track?>(null) }
@@ -629,24 +630,33 @@ private fun OfflineMusicApp(controller: MediaController?) {
     val accentSoft = if (darkMode) Color(0xFF303A58) else Color(0xFFDDE4FF)
     val mainText = if (darkMode) Color(0xFFF5F3FA) else Color(0xFF202638)
     val mutedText = if (darkMode) Color(0xFFB8B6C4) else Color(0xFF737D91)
-    LaunchedEffect(showLyrics, currentTrack?.id) {
+    LaunchedEffect(currentTrack?.id, folderUri) {
         val selected = currentTrack
-        if (showLyrics && selected != null && selected.lyrics.isNullOrBlank()) {
+        val selectedFolder = folderUri
+        if (selected != null && selectedFolder != null && selected.lyrics.isNullOrBlank()) {
             val found = withContext(Dispatchers.IO) {
-                folderUri?.let { root ->
-                    val trackDocument = findTrackDocument(context, root, selected.uri)
-                    trackDocument?.let { readTrackLyrics(context, it) }
-                        ?: findMatchingLyrics(context, root, selected.uri, selected.title, selected.artist)
-                }
+                val trackDocument = findTrackDocument(context, selectedFolder, selected.uri)
+                trackDocument?.let { readTrackLyrics(context, it) }
+                    ?: findMatchingLyrics(context, selectedFolder, selected.uri, selected.title, selected.artist)
             }
-            if (!found.isNullOrBlank()) {
-                tracks = tracks.map { if (it.id == selected.id) it.copy(lyrics = found) else it }
-                folderUri?.let { selectedFolder -> withContext(Dispatchers.IO) { saveTrackCache(context, selectedFolder, tracks) } }
+            if (!found.isNullOrBlank() && currentId == selected.id.toString() && folderUri == selectedFolder) {
+                val updatedTracks = tracks.map { if (it.id == selected.id) it.copy(lyrics = found) else it }
+                tracks = updatedTracks
+                withContext(Dispatchers.IO) { saveTrackCache(context, selectedFolder, updatedTracks) }
             }
         }
     }
-    BackHandler(enabled = showLyrics || showQueue || showCreatePlaylist || trackToAdd != null || showPlayer || selectedGroup != null || tab != "Songs") {
-        when { showLyrics -> showLyrics = false; showQueue -> showQueue = false; showCreatePlaylist -> showCreatePlaylist = false; trackToAdd != null -> trackToAdd = null; showPlayer -> showPlayer = false; selectedGroup != null -> selectedGroup = null; tab != "Songs" -> { tab = "Songs"; search = "" } }
+    BackHandler(enabled = showSettingsMenu || showLyrics || showQueue || showCreatePlaylist || trackToAdd != null || showPlayer || selectedGroup != null || tab != "Songs") {
+        when {
+            showSettingsMenu -> showSettingsMenu = false
+            showLyrics -> showLyrics = false
+            showQueue -> showQueue = false
+            showCreatePlaylist -> showCreatePlaylist = false
+            trackToAdd != null -> trackToAdd = null
+            showPlayer -> showPlayer = false
+            selectedGroup != null -> selectedGroup = null
+            tab != "Songs" -> { tab = "Songs"; search = "" }
+        }
     }
     val filtered = when (tab) {
         "Favorites" -> tracks.filter { favorites.contains(it.id.toString()) }
@@ -765,8 +775,66 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Text("OFFLINE MUSIC", color = accentColor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         Text("Your library", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     }
-                    IconButton(onClick = { tab = "Settings"; selectedGroup = null }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = accentColor, modifier = Modifier.size(27.dp))
+                    Box {
+                        IconButton(onClick = { showSettingsMenu = true }) {
+                            Icon(Icons.Filled.Settings, contentDescription = "Quick settings", tint = accentColor, modifier = Modifier.size(27.dp))
+                        }
+                        DropdownMenu(
+                            expanded = showSettingsMenu,
+                            onDismissRequest = { showSettingsMenu = false },
+                            modifier = Modifier.width(276.dp).background(panelColor, RoundedCornerShape(22.dp))
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(accentSoft), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.Settings, contentDescription = null, tint = accentColor)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text("Quick settings", color = mainText, fontWeight = FontWeight.Bold)
+                                    Text("Make it yours", color = mutedText, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            HorizontalDivider(color = mutedText.copy(alpha = 0.16f))
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text("Dark Mode", color = mainText, fontWeight = FontWeight.SemiBold)
+                                        Text(if (darkMode) "On" else "Off", color = mutedText, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Filled.MusicNote, contentDescription = null, tint = accentColor) },
+                                trailingIcon = {
+                                    Switch(checked = darkMode, onCheckedChange = {
+                                        darkMode = it
+                                        prefs.edit().putBoolean("dark_mode", it).apply()
+                                    })
+                                },
+                                onClick = {
+                                    darkMode = !darkMode
+                                    prefs.edit().putBoolean("dark_mode", darkMode).apply()
+                                },
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                            )
+                            HorizontalDivider(color = mutedText.copy(alpha = 0.16f))
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text("Change music folder", color = mainText, fontWeight = FontWeight.SemiBold)
+                                        Text(folderUri?.let { DocumentFile.fromTreeUri(context, it)?.name } ?: "Choose your library folder", color = mutedText, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = accentColor) },
+                                onClick = {
+                                    showSettingsMenu = false
+                                    folderPicker.launch(folderUri)
+                                },
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
                     }
                 }
                 Spacer(Modifier.height(18.dp))
@@ -790,58 +858,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                 ) { page ->
                     val pageTab = page.first
                     val pageGroup = page.second
-                    if (pageTab == "Settings") {
-                    Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(18.dp))
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = panelColor),
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(accentSoft), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Filled.Settings, contentDescription = null, tint = accentColor, modifier = Modifier.size(24.dp))
-                            }
-                            Spacer(Modifier.width(14.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Appearance", fontWeight = FontWeight.Bold, color = mainText)
-                                Text(if (darkMode) "Dark Mode enabled" else "Light Mode enabled", color = mutedText, style = MaterialTheme.typography.bodySmall)
-                            }
-                            Switch(checked = darkMode, onCheckedChange = {
-                                darkMode = it
-                                prefs.edit().putBoolean("dark_mode", it).apply()
-                            })
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Card(
-                        modifier = Modifier.fillMaxWidth().clickable { folderPicker.launch(folderUri) },
-                        colors = CardDefaults.cardColors(containerColor = panelColor),
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(accentSoft), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = accentColor, modifier = Modifier.size(24.dp))
-                            }
-                            Spacer(Modifier.width(14.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Music folder", fontWeight = FontWeight.Bold, color = mainText)
-                                Text(
-                                    folderUri?.let { DocumentFile.fromTreeUri(context, it)?.name } ?: "Choose a different music folder",
-                                    color = mutedText, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "Choose folder", tint = mutedText, modifier = Modifier.graphicsLayer { rotationZ = 180f })
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Text("Your audio files stay on your device. The app does not upload them.", color = mutedText, style = MaterialTheme.typography.bodySmall)
-                } else if (folderUri == null) {
+                    if (folderUri == null) {
                     Card(
                         Modifier.fillMaxWidth().padding(top = 34.dp),
                         shape = RoundedCornerShape(26.dp),
@@ -882,7 +899,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             Text("Add your songs here, or choose a different folder in Settings.", color = mutedText)
                             Spacer(Modifier.height(12.dp))
                             TextButton(onClick = { refreshRequest++ }) { Text("Refresh folder") }
-                            TextButton(onClick = { tab = "Settings" }) { Text("Change music folder") }
+                            TextButton(onClick = { folderPicker.launch(folderUri) }) { Text("Change music folder") }
                         }
                     }
                 } else if (pageTab == "Playlists") {
