@@ -136,7 +136,7 @@ fun NexoraApp() {
                         Spacer(Modifier.height(12.dp))
                     }
                     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (tasks.isEmpty()) item {
+                        if (tasks.none { it.period == selectedTab }) item {
                             Text("No plans yet. Generate a flexible plan or add your first task.", color = Muted, modifier = Modifier.padding(vertical = 28.dp))
                         }
                         items(tasks.filter { it.period == selectedTab }, key = { it.id }) { task ->
