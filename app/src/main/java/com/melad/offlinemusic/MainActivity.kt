@@ -15,6 +15,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeOut
@@ -39,6 +40,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -51,6 +55,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
@@ -66,6 +71,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -97,7 +104,8 @@ data class Track(
     val duration: Long,
     val uri: Uri,
     val artworkUri: Uri?,
-    val artworkData: ByteArray? = null
+    val artworkData: ByteArray? = null,
+    val lyrics: String? = null
 )
 
 class MainActivity : ComponentActivity() {
@@ -129,10 +137,10 @@ private fun fetchArtistArtwork(context: Context, artist: String): Boolean {
     if (target.exists() && target.length() > 0L) return true
     target.parentFile?.mkdirs()
     val query = URLEncoder.encode("${artist} singer portrait", "UTF-8")
-    val api = URL("https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=$query&gsrnamespace=6&gsrlimit=8&prop=imageinfo&iiprop=url&iiurlwidth=500&format=json")
+    val api = URL("https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=$query&gsrnamespace=6&gsrlimit=3&prop=imageinfo&iiprop=url&iiurlwidth=360&format=json")
     val connection = (api.openConnection() as HttpURLConnection).apply {
-        connectTimeout = 12000
-        readTimeout = 15000
+        connectTimeout = 4500
+        readTimeout = 5500
         setRequestProperty("User-Agent", "OfflineMusicAndroid/1.0 (artist artwork lookup)")
     }
     try {
@@ -148,8 +156,8 @@ private fun fetchArtistArtwork(context: Context, artist: String): Boolean {
         }
         val selectedUrl = imageUrl ?: return false
         val imageConnection = (URL(selectedUrl).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 12000
-            readTimeout = 15000
+            connectTimeout = 4500
+            readTimeout = 5500
             setRequestProperty("User-Agent", "OfflineMusicAndroid/1.0")
         }
         try {
@@ -184,6 +192,15 @@ private fun ArtistArtwork(artist: String, version: Int, modifier: Modifier = Mod
         if (bitmap != null) Image(bitmap!!, contentDescription = "$artist artist photo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Icon(Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
     }
+}
+
+
+private fun readTrackLyrics(context: Context, file: DocumentFile): String? {
+    val base = file.name.orEmpty().substringBeforeLast('.', file.name.orEmpty())
+    val sibling = runCatching { file.parentFile?.listFiles()?.firstOrNull {
+        val n = it.name.orEmpty(); n.equals("$base.lrc", true) || n.equals("$base.txt", true)
+    } }.getOrNull()
+    return runCatching { sibling?.let { context.contentResolver.openInputStream(it.uri)?.bufferedReader()?.use { reader -> reader.readText() } } }.getOrNull()
 }
 
 private fun loadTracks(context: Context, treeUri: Uri, existing: List<Track> = emptyList()): List<Track> {
@@ -236,8 +253,9 @@ private fun loadTracks(context: Context, treeUri: Uri, existing: List<Track> = e
                 }.getOrNull()
             }
         }
+        val lyrics = readTrackLyrics(context, file)
         val id = file.uri.toString().hashCode().toLong()
-        Track(id, title, artist, album, duration, file.uri, null, artworkData)
+        Track(id, title, artist, album, duration, file.uri, null, artworkData, lyrics)
     }
 
     return (retained.values + added).sortedBy { it.title.lowercase() }
@@ -258,6 +276,7 @@ private fun saveTrackCache(context: Context, folderUri: Uri, tracks: List<Track>
             put("duration", track.duration)
             put("uri", track.uri.toString())
             put("hasArtwork", track.artworkData != null && artFile.exists())
+            put("lyrics", track.lyrics ?: "")
         })
     }
     context.getSharedPreferences("offline_music", Context.MODE_PRIVATE).edit()
@@ -279,7 +298,7 @@ private fun loadTrackCache(context: Context, folderUri: Uri): List<Track>? {
             val id = item.getLong("id")
             val artFile = java.io.File(artDir, "${id}.img")
             val art = if (item.optBoolean("hasArtwork") && artFile.exists()) runCatching { artFile.readBytes() }.getOrNull() else null
-            Track(id, item.getString("title"), item.getString("artist"), item.getString("album"), item.optLong("duration"), uri, null, art)
+            Track(id, item.getString("title"), item.getString("artist"), item.getString("album"), item.optLong("duration"), uri, null, art, item.optString("lyrics").takeIf { it.isNotBlank() })
         }
     }.getOrNull()
 }
@@ -324,6 +343,8 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var duration by remember { mutableLongStateOf(0L) }
     var showPlayer by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
+    var showPlayerMenu by remember { mutableStateOf(false) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
     var trackToAdd by remember { mutableStateOf<Track?>(null) }
     var playlistRefresh by remember { mutableIntStateOf(0) }
@@ -417,6 +438,9 @@ private fun OfflineMusicApp(controller: MediaController?) {
     }
 
     val currentTrack = tracks.firstOrNull { it.id.toString() == currentId }
+    BackHandler(enabled = showLyrics || showQueue || showCreatePlaylist || trackToAdd != null || showPlayer || selectedGroup != null || tab != "Songs") {
+        when { showLyrics -> showLyrics = false; showQueue -> showQueue = false; showCreatePlaylist -> showCreatePlaylist = false; trackToAdd != null -> trackToAdd = null; showPlayer -> showPlayer = false; selectedGroup != null -> selectedGroup = null; tab != "Songs" -> { tab = "Songs"; search = "" } }
+    }
     val filtered = when (tab) {
         "Favorites" -> tracks.filter { favorites.contains(it.id.toString()) }
         "Recent" -> recentIds.mapNotNull { id -> tracks.firstOrNull { it.id.toString() == id } }
@@ -683,57 +707,37 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         }
                     }
                 } else if (pageTab == "Albums" || pageTab == "Artists") {
-                    val groups = if (pageTab == "Albums") tracks.map { it.album }.distinct().sorted()
-                    else tracks.map { it.artist }.distinct().sorted()
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (pageTab == "Artists") {
-                            item {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Artists", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Spacer(Modifier.weight(1f))
-                                    IconButton(
-                                        enabled = !artistFetchState,
-                                        onClick = {
-                                            scope.launch {
-                                                artistFetchState = true
-                                                val names = tracks.map { it.artist.trim() }.filter { it.isNotBlank() && !it.equals("Unknown artist", true) }.distinct()
-                                                withContext(Dispatchers.IO) {
-                                                    names.forEach { name ->
-                                                        if (!artistArtworkFile(context, name).exists()) fetchArtistArtwork(context, name)
-                                                    }
+                    val groups = if (pageTab == "Albums") tracks.map { it.album }.distinct().sorted() else tracks.map { it.artist }.distinct().sorted()
+                    LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
+                        if (pageTab == "Artists") item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Artists", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.weight(1f))
+                                IconButton(enabled = !artistFetchState, onClick = {
+                                    scope.launch {
+                                        artistFetchState = true
+                                        val names = tracks.map { it.artist.trim() }.filter { it.isNotBlank() && !it.equals("Unknown artist", true) }.distinct()
+                                        withContext(Dispatchers.IO) {
+                                            names.filterNot { artistArtworkFile(context, it).exists() }.chunked(5).forEach { batch ->
+                                                kotlinx.coroutines.coroutineScope {
+                                                    batch.map { name -> kotlinx.coroutines.async(Dispatchers.IO) { fetchArtistArtwork(context, name) } }.forEach { it.await() }
                                                 }
-                                                artistImagesVersion++
-                                                artistFetchState = false
                                             }
                                         }
-                                    ) {
-                                        if (artistFetchState) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                                        else Icon(Icons.Filled.Add, contentDescription = "Download artist photos", tint = Color(0xFF1ED760))
+                                        artistImagesVersion++
+                                        artistFetchState = false
                                     }
-                                }
+                                }) { if (artistFetchState) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) else Icon(Icons.Filled.Add, contentDescription = "Download artist photos", tint = Color(0xFF1ED760)) }
                             }
-                        }
-                        items(groups) { group ->
+                        } else item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) { Text("Albums", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                        gridItems(groups) { group ->
                             val groupTracks = if (pageTab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
-                            Card(
-                                modifier = Modifier.fillMaxWidth().clickable { selectedGroup = group },
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF151B18)),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    if (pageTab == "Artists") {
-                                        ArtistArtwork(group, artistImagesVersion, Modifier.size(52.dp))
-                                    } else {
-                                        val albumCover = groupTracks.firstOrNull()
-                                        AlbumArtwork(albumCover?.artworkUri, Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)), artworkData = albumCover?.artworkData)
-                                    }
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(group, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(groupTracks.size.toString() + " tracks", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    Icon(Icons.Filled.ArrowBack, contentDescription = "Open", tint = Color.LightGray, modifier = Modifier.size(18.dp))
-                                }
+                            Column(Modifier.fillMaxWidth().clickable { selectedGroup = group }, horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (pageTab == "Artists") ArtistArtwork(group, artistImagesVersion, Modifier.size(96.dp).clip(CircleShape))
+                                else { val cover = groupTracks.firstOrNull(); AlbumArtwork(cover?.artworkUri, Modifier.size(96.dp).clip(CircleShape), artworkData = cover?.artworkData) }
+                                Spacer(Modifier.height(7.dp))
+                                Text(group, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                Text("${groupTracks.size} tracks", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -876,6 +880,42 @@ private fun OfflineMusicApp(controller: MediaController?) {
                 confirmButton = { TextButton(onClick = { showQueue = false }) { Text("Close") } }
             )
         }
+
+        if (showLyrics && currentTrack != null) {
+            val lines = currentTrack.lyrics.orEmpty().lines().mapNotNull { line ->
+                val m = Regex("^\\s*\\[(\\d{1,2}):(\\d{2})(?:[.:](\\d{1,3}))?]\\s*(.*)$").find(line)
+                if (m != null) {
+                    val ms = m.groupValues[1].toLong() * 60000L + m.groupValues[2].toLong() * 1000L + (m.groupValues[3].padEnd(3, '0').take(3).toIntOrNull() ?: 0)
+                    ms to m.groupValues[4]
+                } else if (line.isNotBlank()) null to line.trim() else null
+            }
+            val timed = lines.any { it.first != null }
+            val active = if (timed) lines.indexOfLast { it.first != null && it.first!! <= position }.coerceAtLeast(0) else if (lines.isNotEmpty() && duration > 0) ((position.toFloat()/duration)*lines.size).toInt().coerceIn(0,lines.lastIndex) else 0
+            val from = lines.getOrNull(active)?.first ?: 0L
+            val until = lines.drop(active+1).firstOrNull { it.first != null }?.first ?: duration.coerceAtLeast(from+1)
+            val fill by androidx.compose.animation.core.animateFloatAsState(if (timed) ((position-from).toFloat()/(until-from).coerceAtLeast(1)).coerceIn(0f,1f) else if (lines.isNotEmpty()) ((position.toFloat()/duration.coerceAtLeast(1))*lines.size-active).coerceIn(0f,1f) else 0f, tween(180), label="lyricFill")
+            Dialog(onDismissRequest = { showLyrics = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                Surface(Modifier.fillMaxSize(), color = Color(0xFF090D0B)) {
+                    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { showLyrics = false }) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back") }
+                            Text("LYRICS  •  " + currentTrack.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (lines.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No lyrics file found. Place a matching .lrc or .txt file beside the song.", color = Color.LightGray) }
+                        else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(22.dp), contentPadding = PaddingValues(vertical = 28.dp)) {
+                            items(lines.size) { i ->
+                                val text = lines[i].second
+                                if (i == active) Box {
+                                    Text(text, color = Color(0xFF66716A), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                    Text(text, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.drawWithContent { clipRect(right = size.width * fill) { this@drawWithContent.drawContent() } })
+                                } else Text(text, color = if (i < active) Color.LightGray else Color(0xFF657069), style = MaterialTheme.typography.titleLarge)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (showPlayer && currentTrack != null) {
             Dialog(
                 onDismissRequest = { showPlayer = false },
@@ -891,7 +931,15 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             Spacer(Modifier.weight(1f))
                             Text("NOW PLAYING", color = Color(0xFF1ED760), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.weight(1f))
-                            IconButton(onClick = { showQueue = true }) { Icon(Icons.Filled.LibraryMusic, contentDescription = "Queue", tint = Color.White) }
+                            Box {
+                                IconButton(onClick = { showPlayerMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More options", tint = Color.White) }
+                                DropdownMenu(expanded = showPlayerMenu, onDismissRequest = { showPlayerMenu = false }) {
+                                    DropdownMenuItem(text = { Text("Shuffle") }, onClick = { shuffle = !shuffle; controller?.shuffleModeEnabled = shuffle; showPlayerMenu = false })
+                                    DropdownMenuItem(text = { Text("Repeat") }, onClick = { repeat = when (repeat) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }; controller?.repeatMode = repeat; showPlayerMenu = false })
+                                    DropdownMenuItem(text = { Text("Show lyrics") }, onClick = { showLyrics = true; showPlayerMenu = false })
+                                    DropdownMenuItem(text = { Text("Play queue") }, onClick = { showQueue = true; showPlayerMenu = false })
+                                }
+                            }
                         }
                         Spacer(Modifier.weight(0.55f))
                         AlbumArtwork(currentTrack.artworkUri, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(26.dp)), large = true, artworkData = currentTrack.artworkData)
