@@ -259,7 +259,7 @@ fun saveTasks(context: SharedPreferences, tasks: List<PlanTask>) {
     context.edit().putString("tasks", array.toString()).apply()
 }
 
-fun loadTasks(context: Context): List<PlanTask> = try {
+fun loadTasks(context: SharedPreferences): List<PlanTask> = try {
     val array = JSONArray(context.getString("tasks", "[]"))
     (0 until array.length()).map { i ->
         val o = array.getJSONObject(i)
@@ -267,5 +267,3 @@ fun loadTasks(context: Context): List<PlanTask> = try {
     }
 } catch (_: Exception) { emptyList() }
 
-private fun Context.getString(key: String, fallback: String) = getSharedPreferences("nexora_local", Context.MODE_PRIVATE).getString(key, fallback) ?: fallback
-private fun Context.edit() = getSharedPreferences("nexora_local", Context.MODE_PRIVATE).edit()
