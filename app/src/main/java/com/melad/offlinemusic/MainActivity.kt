@@ -254,6 +254,21 @@ private fun readTrackLyrics(context: Context, file: DocumentFile, trackTitle: St
     return runCatching { sibling?.let { context.contentResolver.openInputStream(it.uri)?.bufferedReader()?.use { reader -> reader.readText() } } }.getOrNull()
 }
 
+private fun findTrackDocument(context: Context, rootUri: Uri, targetUri: Uri): DocumentFile? {
+    val root = runCatching { DocumentFile.fromTreeUri(context, rootUri) }.getOrNull() ?: return null
+    val pending = ArrayDeque<DocumentFile>()
+    pending.add(root)
+    while (pending.isNotEmpty()) {
+        val folder = pending.removeFirst()
+        val children = runCatching { folder.listFiles().toList() }.getOrDefault(emptyList())
+        for (child in children) {
+            if (child.uri == targetUri) return child
+            if (child.isDirectory) pending.add(child)
+        }
+    }
+    return null
+}
+
 private suspend fun loadTracks(
     context: Context,
     treeUri: Uri,
@@ -535,7 +550,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
         val selected = currentTrack
         if (showLyrics && selected != null && selected.lyrics.isNullOrBlank()) {
             val found = withContext(Dispatchers.IO) {
-                DocumentFile.fromSingleUri(context, selected.uri)?.let { readTrackLyrics(context, it, selected.title) }
+                folderUri?.let { root -> findTrackDocument(context, root, selected.uri)?.let { readTrackLyrics(context, it, selected.title) } }
             }
             if (!found.isNullOrBlank()) {
                 tracks = tracks.map { if (it.id == selected.id) it.copy(lyrics = found) else it }
