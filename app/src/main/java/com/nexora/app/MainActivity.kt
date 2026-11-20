@@ -43,7 +43,7 @@ private val Purple = Color(0xFF9B72F2)
 private val Muted = Color(0xFF9A98A8)
 private val White = Color(0xFFF5F3FA)
 
-data class PlanTask(val id: Long, val title: String, val category: String, val minutes: Int, val done: Boolean = false)
+data class PlanTask(val id: Long, val title: String, val category: String, val minutes: Int, val done: Boolean = false, val period: String = "Daily")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -117,7 +117,7 @@ fun NexoraApp() {
                             Text(selectedTab, color = White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                             Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")), color = Muted, fontSize = 12.sp)
                         }
-                        FilledTonalButton(onClick = { tasks = generatePlan(stage, selectedTab).also { saveTasks(prefs, it) } }) {
+                        FilledTonalButton(onClick = { tasks = (tasks.filterNot { it.period == selectedTab && it.category != "custom" } + generatePlan(stage, selectedTab)).also { saveTasks(prefs, it) } }) {
                             Icon(Icons.Default.AutoAwesome, null)
                             Spacer(Modifier.width(5.dp))
                             Text("Generate")
@@ -139,7 +139,7 @@ fun NexoraApp() {
                         if (tasks.isEmpty()) item {
                             Text("No plans yet. Generate a flexible plan or add your first task.", color = Muted, modifier = Modifier.padding(vertical = 28.dp))
                         }
-                        items(tasks, key = { it.id }) { task ->
+                        items(tasks.filter { it.period == selectedTab }, key = { it.id }) { task ->
                             TaskCard(task, onStart = {
                                 activeId = task.id
                                 remaining = task.minutes * 60
@@ -154,14 +154,14 @@ fun NexoraApp() {
                         OutlinedButton(onClick = { showAdd = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp)) {
                             Icon(Icons.Default.Add, null); Text(" Add task")
                         }
-                        Button(onClick = { tasks = generatePlan(stage, selectedTab).also { saveTasks(prefs, it) } }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp)) {
+                        Button(onClick = { tasks = (tasks.filterNot { it.period == selectedTab && it.category != "custom" } + generatePlan(stage, selectedTab)).also { saveTasks(prefs, it) } }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp)) {
                             Icon(Icons.Default.AutoAwesome, null); Text(" Refresh plan")
                         }
                     }
                 }
             }
             if (showAdd) AddTaskDialog(onDismiss = { showAdd = false }, onSave = { title, mins ->
-                tasks = (tasks + PlanTask(System.currentTimeMillis(), title, "custom", mins)).also { saveTasks(prefs, it) }
+                tasks = (tasks + PlanTask(System.currentTimeMillis(), title, "custom", mins, period = selectedTab)).also { saveTasks(prefs, it) }
                 showAdd = false
             })
         }
@@ -245,17 +245,17 @@ fun generatePlan(stage: String, period: String): List<PlanTask> {
     }.shuffled(Random(System.nanoTime()))
     val count = when (period) { "Weekly" -> 7; "Monthly" -> 12; "Yearly" -> 20; "Catch-up" -> 9; else -> 4 }
     val result = mutableListOf<PlanTask>()
-    result += PlanTask(System.currentTimeMillis(), "راحة وفطار", "break", 30)
+    result += PlanTask(System.currentTimeMillis(), "راحة وفطار", "break", 30, period = period)
     repeat(count) { i ->
-        result += PlanTask(System.currentTimeMillis() + i + 1, "مذاكرة ${subjects[i % subjects.size]}", "study", if (period == "Catch-up") 50 else 40)
-        if (i % 2 == 1) result += PlanTask(System.currentTimeMillis() + 100 + i, "استراحة قصيرة", "break", 15)
+        result += PlanTask(System.currentTimeMillis() + i + 1, "مذاكرة ${subjects[i % subjects.size]}", "study", if (period == "Catch-up") 50 else 40, period = period)
+        if (i % 2 == 1) result += PlanTask(System.currentTimeMillis() + 100 + i, "استراحة قصيرة", "break", 15, period = period)
     }
     return result
 }
 
 fun saveTasks(context: SharedPreferences, tasks: List<PlanTask>) {
     val array = JSONArray()
-    tasks.forEach { t -> array.put(JSONObject().put("id", t.id).put("title", t.title).put("category", t.category).put("minutes", t.minutes).put("done", t.done)) }
+    tasks.forEach { t -> array.put(JSONObject().put("id", t.id).put("title", t.title).put("category", t.category).put("minutes", t.minutes).put("done", t.done).put("period", t.period)) }
     context.edit().putString("tasks", array.toString()).apply()
 }
 
@@ -263,7 +263,7 @@ fun loadTasks(context: SharedPreferences): List<PlanTask> = try {
     val array = JSONArray(context.getString("tasks", "[]"))
     (0 until array.length()).map { i ->
         val o = array.getJSONObject(i)
-        PlanTask(o.getLong("id"), o.getString("title"), o.getString("category"), o.getInt("minutes"), o.optBoolean("done"))
+        PlanTask(o.getLong("id"), o.getString("title"), o.getString("category"), o.getInt("minutes"), o.optBoolean("done"), o.optString("period", "Daily"))
     }
 } catch (_: Exception) { emptyList() }
 
