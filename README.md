@@ -25,3 +25,6 @@ An offline music player for Android. Browse and play music stored on your device
 ## Build
 Open with Android Studio or run `gradle assembleDebug` with JDK 17 and Android SDK 35.
 The GitHub Actions workflow builds a debug APK and uploads it as an artifact.
+
+
+UI layout fix: keep the Songs header and track count above the scrollable list; list now receives remaining vertical space.
