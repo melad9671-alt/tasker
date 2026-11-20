@@ -1,14 +1,21 @@
-# Offline Music
+# NEXORA
 
-An Android offline-first music player for audio files stored on the device.
+Adaptive, offline-first Android planner prototype built with Kotlin and Jetpack Compose.
 
-## Features
-- Reads local audio through Android MediaStore after permission is granted.
-- Songs, albums, artists, search, and favorites.
-- Background playback through Media3 MediaSessionService.
-- Lock-screen and notification media controls supplied by Android Media3.
-- No account, server, or network permission.
+## Current MVP
+- Local-only onboarding profile (no account or network permission).
+- Six planner sections: Daily, Weekly, Monthly, Yearly, Catch-up and Extra.
+- Dynamic starter-plan generation with shuffled study subjects and configurable task durations.
+- Manual task creation and local task persistence.
+- Focus countdown; a study task is marked complete when its timer finishes.
+- Dark UI with purple accents and rounded cards.
 
 ## Build
-Open with Android Studio or run `gradle assembleDebug` with JDK 17 and Android SDK 35.
-The GitHub Actions workflow builds a debug APK and uploads it as an artifact.
+GitHub Actions builds a debug APK on pushes to `main` or `nexora-app`, and on manual workflow dispatch.
+The artifact is named `nexora-debug-apk`.
+
+Requirements: JDK 17, Android SDK 35, Gradle 8.9.
+Run: `gradle --no-daemon assembleDebug`.
+
+## Notes
+This is an initial functional MVP, not yet the complete long-horizon planner described in the product brief. Academic calendars, birth-date-aware progression, weekly availability, commute/meal/sleep constraints, multi-day catch-up optimization, Room migrations, and full year streaming remain planned iterations.
