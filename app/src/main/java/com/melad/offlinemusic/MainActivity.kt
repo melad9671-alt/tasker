@@ -421,7 +421,8 @@ private fun saveTrackCache(context: Context, folderUri: Uri, tracks: List<Track>
         if (track.artworkData != null) runCatching { artFile.writeBytes(track.artworkData) }
         else if (artFile.exists()) runCatching { artFile.delete() }
         json.put(org.json.JSONObject().apply {
-            put("id", track.id)            put("title", track.title)
+            put("id", track.id)
+            put("title", track.title)
             put("artist", track.artist)
             put("album", track.album)
             put("duration", track.duration)
@@ -1338,7 +1339,8 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             value = if (duration > 0L) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f,
                             onValueChange = { if (duration > 0L) position = (it * duration).toLong() },
                             onValueChangeFinished = { controller?.seekTo(position) }
-                        )                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(formatTime(position), color = mutedText, style = MaterialTheme.typography.labelSmall)
                             Text(formatTime(duration), color = mutedText, style = MaterialTheme.typography.labelSmall)
                         }
