@@ -302,7 +302,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
         }
     }
 
-    LaunchedEffect(folderUri, refreshRequest) {
+    LaunchedEffect(refreshRequest) {
         val selectedUri = folderUri
         if (refreshRequest > 0 && selectedUri != null) {
             scanning = true
