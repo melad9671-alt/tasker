@@ -124,13 +124,16 @@ fun NexoraApp() {
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    if (running) {
+                    if (activeId != null) {
                         Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF29203C)), shape = RoundedCornerShape(22.dp)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                                Text("FOCUS SESSION", color = Purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(if (running) "FOCUS SESSION" else "SESSION PAUSED", color = Purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Text(tasks.firstOrNull { it.id == activeId }?.title ?: "Focus", color = White, fontSize = 17.sp)
                                 Text("%02d:%02d".format(remaining / 60, remaining % 60), color = White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                                OutlinedButton(onClick = { running = false }) { Text("Pause") }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { running = !running }) { Text(if (running) "Pause" else "Resume") }
+                                    TextButton(onClick = { running = false; activeId = null; remaining = 0 }) { Text("End session") }
+                                }
                             }
                         }
                         Spacer(Modifier.height(12.dp))
