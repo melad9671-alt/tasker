@@ -42,6 +42,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.documentfile.provider.DocumentFile
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -66,6 +68,9 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Search
@@ -416,8 +421,7 @@ private fun saveTrackCache(context: Context, folderUri: Uri, tracks: List<Track>
         if (track.artworkData != null) runCatching { artFile.writeBytes(track.artworkData) }
         else if (artFile.exists()) runCatching { artFile.delete() }
         json.put(org.json.JSONObject().apply {
-            put("id", track.id)
-            put("title", track.title)
+            put("id", track.id)            put("title", track.title)
             put("artist", track.artist)
             put("album", track.album)
             put("duration", track.duration)
@@ -493,6 +497,11 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var showLyrics by remember { mutableStateOf(false) }
     var showPlayerMenu by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var showFilterMenu by remember { mutableStateOf(false) }
+    var sortBy by remember { mutableStateOf("Title") }
+    var selectedPlaylist by remember { mutableStateOf<String?>(null) }
+    var showPlaylistPicker by remember { mutableStateOf(false) }
+    var targetPlaylistName by remember { mutableStateOf<String?>(null) }
     var darkMode by remember { mutableStateOf(prefs.getBoolean("dark_mode", false)) }
     var lyricsImportError by remember { mutableStateOf<String?>(null) }
     var songMenuTrack by remember { mutableStateOf<Track?>(null) }
@@ -523,6 +532,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
             prefs.edit().putString("music_folder_uri", uri.toString()).apply()
             tab = "Songs"
             selectedGroup = null
+            selectedPlaylist = null
         }
     }
 
@@ -623,13 +633,13 @@ private fun OfflineMusicApp(controller: MediaController?) {
             }
         }
     }
-    val pageBackground = if (darkMode) Color(0xFF11121A) else Color(0xFFF3F5FA)
-    val panelColor = if (darkMode) Color(0xFF1D1F2B) else Color(0xFFFFFFFF)
-    val panelAlt = if (darkMode) Color(0xFF292B39) else Color(0xFFE9EDF6)
-    val accentColor = if (darkMode) Color(0xFFAFBCFF) else Color(0xFF5369D9)
-    val accentSoft = if (darkMode) Color(0xFF303A58) else Color(0xFFDDE4FF)
-    val mainText = if (darkMode) Color(0xFFF5F3FA) else Color(0xFF202638)
-    val mutedText = if (darkMode) Color(0xFFB8B6C4) else Color(0xFF737D91)
+    val pageBackground = if (darkMode) Color(0xFF101A19) else Color(0xFFF5F7F3)
+    val panelColor = if (darkMode) Color(0xFF192624) else Color(0xFFFFFFFF)
+    val panelAlt = if (darkMode) Color(0xFF233431) else Color(0xFFE8EFEB)
+    val accentColor = if (darkMode) Color(0xFF75D6C1) else Color(0xFF187F72)
+    val accentSoft = if (darkMode) Color(0xFF294B45) else Color(0xFFD6EAE3)
+    val mainText = if (darkMode) Color(0xFFF1F6F2) else Color(0xFF1E2C28)
+    val mutedText = if (darkMode) Color(0xFFA7BBB3) else Color(0xFF74847D)
     LaunchedEffect(currentTrack?.id, folderUri) {
         val selected = currentTrack
         val selectedFolder = folderUri
@@ -667,7 +677,13 @@ private fun OfflineMusicApp(controller: MediaController?) {
             it.title.contains(search, true) ||
             it.artist.contains(search, true) ||
             it.album.contains(search, true)
-    }
+    }.sortedWith(
+        when (sortBy) {
+            "Artist" -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.artist }
+            "Album" -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.album }
+            else -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.title }
+        }
+    )
 
     fun playList(list: List<Track>, selected: Track) {
         if (controller == null || list.isEmpty()) return
@@ -714,8 +730,8 @@ private fun OfflineMusicApp(controller: MediaController?) {
         Scaffold(
             containerColor = pageBackground,
             bottomBar = {
-                Column(Modifier.fillMaxWidth().background(pageBackground)) {
-                    if (currentTrack != null && !showPlayer) {
+                if (currentTrack != null && !showPlayer) {
+                    Column(Modifier.fillMaxWidth().background(pageBackground)) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(15.dp)).background(panelAlt).clickable { showPlayer = true }.padding(horizontal = 9.dp, vertical = 7.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 AlbumArtwork(currentTrack.artworkUri, Modifier.size(42.dp).clip(RoundedCornerShape(8.dp)), artworkData = currentTrack.artworkData)
@@ -735,119 +751,79 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             )
                         }
                     }
-                    NavigationBar(containerColor = pageBackground) {
-                        listOf(
-                            Triple("Songs", Icons.Filled.LibraryMusic, "Songs"),
-                            Triple("Albums", Icons.Filled.Album, "Albums"),
-                            Triple("Artists", Icons.Filled.Person, "Artists"),
-                            Triple("Favorites", Icons.Filled.Favorite, "Favorites"),
-                            Triple("Recent", Icons.Filled.Repeat, "Recent"),
-                            Triple("Playlists", Icons.Filled.LibraryMusic, "Playlists")
-                        ).forEach { item ->
-                            NavigationBarItem(
-                                selected = tab == item.first,
-                                onClick = { tab = item.first; selectedGroup = null },
-                                icon = { Icon(item.second, contentDescription = item.third) },
-                                label = { Text(item.third) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = accentColor,
-                                    selectedTextColor = accentColor,
-                                    indicatorColor = accentSoft,
-                                    unselectedIconColor = mutedText,
-                                    unselectedTextColor = mutedText
-                                )
-                            )
-                        }
-                    }
                 }
             }
         ) { padding ->
             Column(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 18.dp).animateContentSize(animationSpec = tween(360, easing = FastOutSlowInEasing))
             ) {
-                Spacer(Modifier.height(22.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(accentColor), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Color.Black)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("OFFLINE MUSIC", color = accentColor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text("Your library", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box {
-                        IconButton(onClick = { showSettingsMenu = true }) {
-                            Icon(Icons.Filled.Settings, contentDescription = "Quick settings", tint = accentColor, modifier = Modifier.size(27.dp))
+                        IconButton(
+                            onClick = { showFilterMenu = true },
+                            modifier = Modifier.size(48.dp).clip(CircleShape).background(panelAlt)
+                        ) {
+                            Icon(Icons.Filled.Tune, contentDescription = "Search filters", tint = mainText, modifier = Modifier.size(25.dp))
                         }
                         DropdownMenu(
-                            expanded = showSettingsMenu,
-                            onDismissRequest = { showSettingsMenu = false },
-                            modifier = Modifier.width(276.dp).background(panelColor, RoundedCornerShape(22.dp))
+                            expanded = showFilterMenu,
+                            onDismissRequest = { showFilterMenu = false },
+                            modifier = Modifier.background(panelColor, RoundedCornerShape(18.dp))
                         ) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(accentSoft), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.Settings, contentDescription = null, tint = accentColor)
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column {
-                                    Text("Quick settings", color = mainText, fontWeight = FontWeight.Bold)
-                                    Text("Make it yours", color = mutedText, style = MaterialTheme.typography.labelSmall)
-                                }
+                            Text("Sort library", modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), color = mutedText, style = MaterialTheme.typography.labelMedium)
+                            listOf("Title", "Artist", "Album").forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option, color = if (sortBy == option) accentColor else mainText, fontWeight = if (sortBy == option) FontWeight.Bold else FontWeight.Normal) },
+                                    onClick = { sortBy = option; showFilterMenu = false }
+                                )
                             }
-                            HorizontalDivider(color = mutedText.copy(alpha = 0.16f))
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text("Dark Mode", color = mainText, fontWeight = FontWeight.SemiBold)
-                                        Text(if (darkMode) "On" else "Off", color = mutedText, style = MaterialTheme.typography.labelSmall)
-                                    }
-                                },
-                                leadingIcon = { Icon(Icons.Filled.MusicNote, contentDescription = null, tint = accentColor) },
-                                trailingIcon = {
-                                    Switch(checked = darkMode, onCheckedChange = {
-                                        darkMode = it
-                                        prefs.edit().putBoolean("dark_mode", it).apply()
-                                    })
-                                },
-                                onClick = {
-                                    darkMode = !darkMode
-                                    prefs.edit().putBoolean("dark_mode", darkMode).apply()
-                                },
-                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
-                            )
-                            HorizontalDivider(color = mutedText.copy(alpha = 0.16f))
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text("Change music folder", color = mainText, fontWeight = FontWeight.SemiBold)
-                                        Text(folderUri?.let { DocumentFile.fromTreeUri(context, it)?.name } ?: "Choose your library folder", color = mutedText, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                },
-                                leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = accentColor) },
-                                onClick = {
-                                    showSettingsMenu = false
-                                    folderPicker.launch(folderUri)
-                                },
-                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
-                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.weight(1f).height(54.dp),
+                        placeholder = { Text("Search songs, playlists, and artists", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (search.isNotBlank()) TextButton(onClick = { search = "" }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Clear") }
+                        },
+                        singleLine = true,
+                        shape = CircleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = panelAlt,
+                            unfocusedContainerColor = panelAlt,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedTextColor = mainText,
+                            unfocusedTextColor = mainText,
+                            focusedPlaceholderColor = mutedText,
+                            unfocusedPlaceholderColor = mutedText,
+                            focusedLeadingIconColor = mutedText,
+                            unfocusedLeadingIconColor = mutedText
+                        )
+                    )
+                }
+                Spacer(Modifier.height(13.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(23.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf("Songs", "Albums", "Artists", "Favorites", "Recent", "Playlists").forEach { label ->
+                        Column(
+                            Modifier.clickable { tab = label; selectedGroup = null; selectedPlaylist = null }
+                                .padding(vertical = 5.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(label, color = if (tab == label) accentColor else mutedText, fontWeight = if (tab == label) FontWeight.Bold else FontWeight.Medium, style = MaterialTheme.typography.labelLarge)
                             Spacer(Modifier.height(6.dp))
+                            Box(Modifier.width(if (tab == label) 22.dp else 6.dp).height(3.dp).clip(CircleShape).background(if (tab == label) accentColor else Color.Transparent))
                         }
                     }
                 }
-                Spacer(Modifier.height(18.dp))
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search songs, artists, albums") },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp)
-                )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 AnimatedContent(
                     targetState = tab to selectedGroup,
                     transitionSpec = {
@@ -903,21 +879,92 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         }
                     }
                 } else if (pageTab == "Playlists") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Your playlists", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { playlistName = ""; showCreatePlaylist = true }) { Text("+ New") }
-                    }
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(playlistNames.toList().sorted()) { name ->
-                            val ids = prefs.getStringSet("playlist_$name", emptySet()) ?: emptySet()
-                            val playlistTracks = tracks.filter { ids.contains(it.id.toString()) }
-                            Card(Modifier.fillMaxWidth().clickable { playlistTracks.firstOrNull()?.let { playList(playlistTracks, it) } }, colors = CardDefaults.cardColors(containerColor = panelColor)) {
-                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.LibraryMusic, tint = accentColor, contentDescription = null)
+                    playlistRefresh
+                    if (selectedPlaylist == null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Your playlists", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { playlistName = ""; showCreatePlaylist = true }) { Text("+ New") }
+                        }
+                        if (playlistNames.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().padding(top = 52.dp), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Filled.LibraryMusic, contentDescription = null, tint = accentColor, modifier = Modifier.size(42.dp))
+                                    Spacer(Modifier.height(10.dp))
+                                    Text("Your playlists will appear here", color = mainText, fontWeight = FontWeight.SemiBold)
+                                    Text("Create one, then add the songs you love.", color = mutedText, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        } else LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            items(playlistNames.toList().sorted()) { name ->
+                                val ids = prefs.getStringSet("playlist_$name", emptySet()) ?: emptySet()
+                                val playlistTracks = tracks.filter { ids.contains(it.id.toString()) }
+                                Row(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(17.dp)).background(panelColor)
+                                        .clickable { selectedPlaylist = name }.padding(15.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)).background(accentSoft), contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.LibraryMusic, tint = accentColor, contentDescription = null)
+                                    }
                                     Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.SemiBold); Text("${playlistTracks.size} tracks", color = mutedText) }
-                                    TextButton(onClick = { tracks.firstOrNull()?.let { t -> prefs.edit().putStringSet("playlist_$name", ids + t.id.toString()).apply() } }) { Text("Add first song") }
+                                    Column(Modifier.weight(1f)) {
+                                        Text(name, fontWeight = FontWeight.SemiBold, color = mainText)
+                                        Text("${playlistTracks.size} songs", color = mutedText, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Icon(Icons.Filled.ChevronRight, contentDescription = "Open playlist", tint = mutedText)
+                                }
+                            }
+                        }
+                    } else {
+                        val playlistNameNow = selectedPlaylist!!
+                        val ids = prefs.getStringSet("playlist_$playlistNameNow", emptySet()) ?: emptySet()
+                        val playlistTracks = tracks.filter { ids.contains(it.id.toString()) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { selectedPlaylist = null }) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back") }
+                            Column(Modifier.weight(1f)) {
+                                Text(playlistNameNow, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${playlistTracks.size} songs", color = mutedText, style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { targetPlaylistName = playlistNameNow; showPlaylistPicker = true }) {
+                                Icon(Icons.Filled.Add, contentDescription = null)
+                                Text("Add songs")
+                            }
+                        }
+                        if (playlistTracks.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().padding(top = 42.dp), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("This playlist is empty", color = mainText, fontWeight = FontWeight.SemiBold)
+                                    Text("Add songs from your music library.", color = mutedText, style = MaterialTheme.typography.bodySmall)
+                                    Spacer(Modifier.height(12.dp))
+                                    Button(onClick = { targetPlaylistName = playlistNameNow; showPlaylistPicker = true }) { Text("Choose songs") }
+                                }
+                            }
+                        } else {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = { playlistTracks.firstOrNull()?.let { playList(playlistTracks, it) } }) {
+                                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                                    Text("Play all")
+                                }
+                            }
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(playlistTracks, key = { it.id }) { track ->
+                                    Row(
+                                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(panelColor)
+                                            .clickable { playList(playlistTracks, track) }.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AlbumArtwork(track.artworkUri, Modifier.size(45.dp).clip(RoundedCornerShape(9.dp)), artworkData = track.artworkData)
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(track.title, color = mainText, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(track.artist, color = mutedText, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                        }
+                                        IconButton(onClick = {
+                                            prefs.edit().putStringSet("playlist_$playlistNameNow", ids - track.id.toString()).apply()
+                                            playlistRefresh++
+                                        }) { Icon(Icons.Filled.Delete, contentDescription = "Remove song", tint = mutedText) }
+                                    }
                                 }
                             }
                         }
@@ -1112,6 +1159,35 @@ private fun OfflineMusicApp(controller: MediaController?) {
         }
 
 
+        if (showPlaylistPicker && targetPlaylistName != null) {
+            val destination = targetPlaylistName!!
+            val selectedIds = prefs.getStringSet("playlist_$destination", emptySet()) ?: emptySet()
+            AlertDialog(
+                onDismissRequest = { showPlaylistPicker = false; targetPlaylistName = null },
+                title = { Text("Add songs to $destination") },
+                text = {
+                    LazyColumn(Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(tracks, key = { it.id }) { track ->
+                            val alreadyAdded = selectedIds.contains(track.id.toString())
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(track.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(track.artist, color = mutedText, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                }
+                                TextButton(
+                                    enabled = !alreadyAdded,
+                                    onClick = {
+                                        prefs.edit().putStringSet("playlist_$destination", selectedIds + track.id.toString()).apply()
+                                        playlistRefresh++
+                                    }
+                                ) { Text(if (alreadyAdded) "Added" else "Add") }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showPlaylistPicker = false; targetPlaylistName = null }) { Text("Done") } }
+            )
+        }
         if (trackToAdd != null) {
             AlertDialog(
                 onDismissRequest = { trackToAdd = null },
@@ -1257,8 +1333,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             value = if (duration > 0L) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f,
                             onValueChange = { if (duration > 0L) position = (it * duration).toLong() },
                             onValueChangeFinished = { controller?.seekTo(position) }
-                        )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        )                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(formatTime(position), color = mutedText, style = MaterialTheme.typography.labelSmall)
                             Text(formatTime(duration), color = mutedText, style = MaterialTheme.typography.labelSmall)
                         }
