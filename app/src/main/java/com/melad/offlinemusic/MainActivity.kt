@@ -375,8 +375,13 @@ private suspend fun loadTracks(
     }.sortedBy { it.name.orEmpty().lowercase() }
 
     val existingByUri = existing.associateBy { it.uri.toString() }
-    val discoveredUris = audioFiles.map { it.uri.toString() }.toSet()
-    val retained = existing.filter { discoveredUris.contains(it.uri.toString()) }
+    val audioByUri = audioFiles.associateBy { it.uri.toString() }
+    val discoveredUris = audioByUri.keys
+    val retained = existing.mapNotNull { track ->
+        audioByUri[track.uri.toString()]?.let { file ->
+            if (track.dateModified == 0L) track.copy(dateModified = file.lastModified()) else track
+        }
+    }
     val added = mutableListOf<Track>()
     val batch = mutableListOf<Track>()
 
