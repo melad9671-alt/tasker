@@ -247,8 +247,15 @@ private fun readTrackLyrics(context: Context, file: DocumentFile): String? {
     return runCatching { sibling?.let { context.contentResolver.openInputStream(it.uri)?.bufferedReader()?.use { reader -> reader.readText() } } }.getOrNull()
 }
 
-private fun loadTracks(context: Context, treeUri: Uri, existing: List<Track> = emptyList()): List<Track> {
-    val root = runCatching { DocumentFile.fromTreeUri(context, treeUri) }.getOrNull() ?: return existing
+private suspend fun loadTracks(
+    context: Context,
+    treeUri: Uri,
+    existing: List<Track> = emptyList(),
+    onBatch: suspend (List<Track>) -> Unit = {}
+): List<Track> = withContext(Dispatchers.IO) {
+    val root = runCatching { DocumentFile.fromTreeUri(context, treeUri) }.getOrNull()
+        ?: return@withContext existing
+
     val allFiles = mutableListOf<DocumentFile>()
     val pending = ArrayDeque<DocumentFile>()
     pending.add(root)
@@ -260,49 +267,50 @@ private fun loadTracks(context: Context, treeUri: Uri, existing: List<Track> = e
     }
 
     val audioExtensions = listOf(".mp3", ".m4a", ".m4b", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma", ".aiff", ".aif", ".3gp", ".amr")
-    val imageExtensions = listOf(".jpg", ".jpeg", ".png", ".webp")
     val audioFiles = allFiles.filter { file ->
         val name = file.name.orEmpty().lowercase()
         audioExtensions.any { name.endsWith(it) } || file.type?.startsWith("audio/", ignoreCase = true) == true
-    }
+    }.sortedBy { it.name.orEmpty().lowercase() }
+
     val existingByUri = existing.associateBy { it.uri.toString() }
     val discoveredUris = audioFiles.map { it.uri.toString() }.toSet()
-    val retained = existing.filter { discoveredUris.contains(it.uri.toString()) }.associateBy { it.uri.toString() }
+    val retained = existing.filter { discoveredUris.contains(it.uri.toString()) }
+    val added = mutableListOf<Track>()
+    val batch = mutableListOf<Track>()
 
-    val added = audioFiles.filterNot { existingByUri.containsKey(it.uri.toString()) }.map { file ->
+    for (file in audioFiles) {
+        if (existingByUri.containsKey(file.uri.toString())) continue
+
         val fallbackTitle = file.name?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Unknown title"
         val retriever = MediaMetadataRetriever()
         val opened = runCatching { retriever.setDataSource(context, file.uri); true }.getOrDefault(false)
-        fun metadata(key: Int): String? = if (opened) runCatching { retriever.extractMetadata(key)?.takeIf { it.isNotBlank() } }.getOrNull() else null
+        fun metadata(key: Int): String? =
+            if (opened) runCatching { retriever.extractMetadata(key)?.takeIf { it.isNotBlank() } }.getOrNull() else null
+
         val title = metadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: fallbackTitle
         val artist = metadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "Unknown artist"
         val album = metadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: "Unknown album"
         val duration = metadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-        var artworkData = if (opened) runCatching { retriever.embeddedPicture }.getOrNull() else null
+        val artworkData = if (opened) runCatching { retriever.embeddedPicture }.getOrNull() else null
         runCatching { retriever.release() }
 
-        // SnapTube downloads commonly keep the cover as a separate image beside the MP3.
-        if (artworkData == null) {
-            val parentFiles = runCatching { file.parentFile?.listFiles()?.toList() }.getOrNull().orEmpty()
-            val baseName = file.name.orEmpty().substringBeforeLast('.', file.name.orEmpty()).lowercase()
-            val companion = parentFiles.firstOrNull { candidate ->
-                val candidateName = candidate.name.orEmpty().lowercase()
-                imageExtensions.any { candidateName.endsWith(it) } &&
-                    (candidateName.substringBeforeLast('.') == baseName ||
-                     candidateName in listOf("cover.jpg", "cover.jpeg", "folder.jpg", "folder.png", "album.jpg", "album.png", "front.jpg", "artwork.jpg"))
-            }
-            if (companion != null) {
-                artworkData = runCatching {
-                    context.contentResolver.openInputStream(companion.uri)?.use { it.readBytes() }
-                }.getOrNull()
-            }
-        }
-        val lyrics = readTrackLyrics(context, file)
+        // Lyrics are loaded only when the user opens the lyrics screen.
+        // Reading every complete MP3 during library scanning made first launch unnecessarily slow.
         val id = file.uri.toString().hashCode().toLong()
-        Track(id, title, artist, album, duration, file.uri, null, artworkData, lyrics)
+        val track = Track(id, title, artist, album, duration, file.uri, null, artworkData, null)
+        added.add(track)
+        batch.add(track)
+
+        // Publish small batches so the list grows progressively without flooding weak devices
+        // with hundreds of Compose state updates in one burst.
+        if (batch.size >= 4) {
+            onBatch(batch.toList())
+            batch.clear()
+        }
     }
 
-    return (retained.values + added).sortedBy { it.title.lowercase() }
+    if (batch.isNotEmpty()) onBatch(batch.toList())
+    (retained + added).sortedBy { it.title.lowercase() }
 }
 
 private fun saveTrackCache(context: Context, folderUri: Uri, tracks: List<Track>) {
@@ -430,9 +438,13 @@ private fun OfflineMusicApp(controller: MediaController?) {
                 scanning = false
             } else {
                 scanning = true
-                val firstScan = withContext(Dispatchers.IO) {
-                    runCatching { loadTracks(context, selectedUri) }.getOrDefault(emptyList())
-                }
+                val firstScan = runCatching {
+                    loadTracks(context, selectedUri) { batch ->
+                        withContext(Dispatchers.Main.immediate) {
+                            tracks = tracks + batch
+                        }
+                    }
+                }.getOrDefault(emptyList())
                 tracks = firstScan
                 withContext(Dispatchers.IO) { saveTrackCache(context, selectedUri, firstScan) }
                 scanning = false
@@ -444,9 +456,14 @@ private fun OfflineMusicApp(controller: MediaController?) {
         val selectedUri = folderUri
         if (refreshRequest > 0 && selectedUri != null) {
             scanning = true
-            val updated = withContext(Dispatchers.IO) {
-                runCatching { loadTracks(context, selectedUri, tracks) }.getOrDefault(tracks)
-            }
+            val existingSnapshot = tracks
+            val updated = runCatching {
+                loadTracks(context, selectedUri, existingSnapshot) { batch ->
+                    withContext(Dispatchers.Main.immediate) {
+                        tracks = (tracks + batch).distinctBy { it.id }
+                    }
+                }
+            }.getOrDefault(existingSnapshot)
             tracks = updated
             withContext(Dispatchers.IO) { saveTrackCache(context, selectedUri, updated) }
             scanning = false
@@ -679,7 +696,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Spacer(Modifier.height(16.dp))
                         Button(onClick = { folderPicker.launch(null) }) { Text("Choose folder") }
                     }
-                } else if (scanning) {
+                } else if (scanning && tracks.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = Color(0xFF1ED760))
@@ -824,6 +841,9 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         Text(pageTab, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
                         Text(filtered.size.toString() + " tracks", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
+                    if (scanning) {
+                        Text("Scanning… ${tracks.size} songs found", color = Color(0xFF1ED760), style = MaterialTheme.typography.labelSmall)
+                    }
                     }
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(
