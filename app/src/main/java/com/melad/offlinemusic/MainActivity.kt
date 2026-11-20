@@ -221,7 +221,7 @@ private fun readTrackLyrics(context: Context, file: DocumentFile): String? {
                         val body = start + 4
                         val terminator = if (encoding == 1 || encoding == 2) {
                             var p = body
-                            while (p + 1 < finish && !(bytes[p] == 0.toByte() && bytes[p+1] == 0.toByte()) p += 2
+                            while (p + 1 < finish && !(bytes[p] == 0.toByte() && bytes[p+1] == 0.toByte())) p += 2
                             p + 2
                         } else {
                             var p = body
