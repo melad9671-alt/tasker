@@ -10,6 +10,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
@@ -42,6 +46,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LibraryMusic
@@ -113,6 +118,71 @@ class MainActivity : ComponentActivity() {
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
         super.onDestroy()
+    }
+}
+
+private fun artistArtworkFile(context: Context, artist: String): File =
+    File(File(context.filesDir, "artist_artwork"), "${artist.trim().lowercase().hashCode()}.jpg")
+
+private fun fetchArtistArtwork(context: Context, artist: String): Boolean {
+    val target = artistArtworkFile(context, artist)
+    if (target.exists() && target.length() > 0L) return true
+    target.parentFile?.mkdirs()
+    val query = URLEncoder.encode("${artist} singer portrait", "UTF-8")
+    val api = URL("https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=$query&gsrnamespace=6&gsrlimit=8&prop=imageinfo&iiprop=url&iiurlwidth=500&format=json")
+    val connection = (api.openConnection() as HttpURLConnection).apply {
+        connectTimeout = 12000
+        readTimeout = 15000
+        setRequestProperty("User-Agent", "OfflineMusicAndroid/1.0 (artist artwork lookup)")
+    }
+    try {
+        val response = connection.inputStream.bufferedReader().use { it.readText() }
+        val pages = org.json.JSONObject(response).optJSONObject("query")?.optJSONObject("pages") ?: return false
+        var imageUrl: String? = null
+        val keys = pages.keys()
+        while (keys.hasNext() && imageUrl == null) {
+            val page = pages.optJSONObject(keys.next()) ?: continue
+            val info = page.optJSONArray("imageinfo")?.optJSONObject(0)
+            imageUrl = info?.optString("thumburl")?.takeIf { it.startsWith("https://") }
+                ?: info?.optString("url")?.takeIf { it.startsWith("https://") }
+        }
+        val selectedUrl = imageUrl ?: return false
+        val imageConnection = (URL(selectedUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 12000
+            readTimeout = 15000
+            setRequestProperty("User-Agent", "OfflineMusicAndroid/1.0")
+        }
+        try {
+            imageConnection.inputStream.use { input ->
+                val bytes = input.readBytes()
+                if (bytes.isEmpty() || bytes.size > 8 * 1024 * 1024) return false
+                target.writeBytes(bytes)
+                return true
+            }
+        } finally {
+            imageConnection.disconnect()
+        }
+    } catch (_: Exception) {
+        return false
+    } finally {
+        connection.disconnect()
+    }
+}
+
+@Composable
+private fun ArtistArtwork(artist: String, version: Int, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, artist, version) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val file = artistArtworkFile(context, artist)
+                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() else null
+            }.getOrNull()
+        }
+    }
+    Box(modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xFF352222)), contentAlignment = Alignment.Center) {
+        if (bitmap != null) Image(bitmap!!, contentDescription = "$artist artist photo", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        else Icon(Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
     }
 }
 
@@ -237,6 +307,9 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var tracks by remember { mutableStateOf(emptyList<Track>()) }
     var scanning by remember { mutableStateOf(false) }
     var refreshRequest by remember { mutableIntStateOf(0) }
+    var artistImagesVersion by remember { mutableIntStateOf(0) }
+    var artistFetchState by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     var favorites by remember {
         mutableStateOf(prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet())
     }
@@ -565,8 +638,12 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFF251817)).padding(18.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF3A2424)), contentAlignment = Alignment.Center) {
-                                    Icon(if (pageTab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(38.dp))
+                                if (pageTab == "Artists") {
+                                    ArtistArtwork(group, artistImagesVersion, Modifier.size(76.dp))
+                                } else {
+                                    Box(Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF3A2424)), contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.Album, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(38.dp))
+                                    }
                                 }
                                 Spacer(Modifier.width(14.dp))
                                 Column(Modifier.weight(1f)) {
@@ -610,6 +687,33 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     val groups = if (pageTab == "Albums") tracks.map { it.album }.distinct().sorted()
                     else tracks.map { it.artist }.distinct().sorted()
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (pageTab == "Artists") {
+                            item {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Artists", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.weight(1f))
+                                    IconButton(
+                                        enabled = !artistFetchState,
+                                        onClick = {
+                                            scope.launch {
+                                                artistFetchState = true
+                                                val names = tracks.map { it.artist.trim() }.filter { it.isNotBlank() && !it.equals("Unknown artist", true) }.distinct()
+                                                withContext(Dispatchers.IO) {
+                                                    names.forEach { name ->
+                                                        if (!artistArtworkFile(context, name).exists()) fetchArtistArtwork(context, name)
+                                                    }
+                                                }
+                                                artistImagesVersion++
+                                                artistFetchState = false
+                                            }
+                                        }
+                                    ) {
+                                        if (artistFetchState) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                                        else Icon(Icons.Filled.Add, contentDescription = "Download artist photos", tint = Color(0xFF1ED760))
+                                    }
+                                }
+                            }
+                        }
                         items(groups) { group ->
                             val groupTracks = if (pageTab == "Albums") tracks.filter { it.album == group } else tracks.filter { it.artist == group }
                             Card(
@@ -618,8 +722,12 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 shape = RoundedCornerShape(16.dp)
                             ) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF352222)), contentAlignment = Alignment.Center) {
-                                        Icon(if (pageTab == "Albums") Icons.Filled.Album else Icons.Filled.Person, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
+                                    if (pageTab == "Artists") {
+                                        ArtistArtwork(group, artistImagesVersion, Modifier.size(52.dp))
+                                    } else {
+                                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF352222)), contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Filled.Album, contentDescription = null, tint = Color(0xFFFF5A5F), modifier = Modifier.size(27.dp))
+                                        }
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
