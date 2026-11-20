@@ -1,6 +1,6 @@
 # Sonora Music
 
-Project status: Android build validation for the current app changes.
+Project status: Sonora Music settings, sorting, swipe navigation, and launcher icon updated.
 
 **Store listing title suggestion:** Sonora Music: Music Player
 
