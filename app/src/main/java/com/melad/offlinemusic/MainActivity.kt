@@ -1164,13 +1164,14 @@ private fun OfflineMusicApp(controller: MediaController?) {
 
         if (showPlaylistPicker && targetPlaylistName != null) {
             val destination = targetPlaylistName!!
-            val selectedIds = prefs.getStringSet("playlist_$destination", emptySet()) ?: emptySet()
+            playlistRefresh
             AlertDialog(
                 onDismissRequest = { showPlaylistPicker = false; targetPlaylistName = null },
                 title = { Text("Add songs to $destination") },
                 text = {
                     LazyColumn(Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(tracks, key = { it.id }) { track ->
+                            val selectedIds = prefs.getStringSet("playlist_$destination", emptySet())?.toSet() ?: emptySet()
                             val alreadyAdded = selectedIds.contains(track.id.toString())
                             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
@@ -1180,7 +1181,8 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 TextButton(
                                     enabled = !alreadyAdded,
                                     onClick = {
-                                        prefs.edit().putStringSet("playlist_$destination", selectedIds + track.id.toString()).apply()
+                                        val latestIds = prefs.getStringSet("playlist_$destination", emptySet())?.toSet() ?: emptySet()
+                                        prefs.edit().putStringSet("playlist_$destination", latestIds + track.id.toString()).apply()
                                         playlistRefresh++
                                     }
                                 ) { Text(if (alreadyAdded) "Added" else "Add") }
