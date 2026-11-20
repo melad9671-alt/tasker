@@ -545,28 +545,50 @@ private fun OfflineMusicApp(controller: MediaController?) {
         Scaffold(
             containerColor = Color(0xFF090D0B),
             bottomBar = {
-                NavigationBar(containerColor = Color(0xFF111713)) {
-                    listOf(
-                        Triple("Songs", Icons.Filled.LibraryMusic, "Songs"),
-                        Triple("Albums", Icons.Filled.Album, "Albums"),
-                        Triple("Artists", Icons.Filled.Person, "Artists"),
-                        Triple("Favorites", Icons.Filled.Favorite, "Favorites"),
-                        Triple("Recent", Icons.Filled.Repeat, "Recent"),
-                        Triple("Playlists", Icons.Filled.LibraryMusic, "Playlists")
-                    ).forEach { item ->
-                        NavigationBarItem(
-                            selected = tab == item.first,
-                            onClick = { tab = item.first; selectedGroup = null },
-                            icon = { Icon(item.second, contentDescription = item.third) },
-                            label = { Text(item.third) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color(0xFFE7DDF0),
-                                selectedTextColor = Color(0xFFE7DDF0),
-                                indicatorColor = Color(0xFF51445D),
-                                unselectedIconColor = Color(0xFFC9C3CF),
-                                unselectedTextColor = Color(0xFFC9C3CF)
+                Column(Modifier.fillMaxWidth().background(Color(0xFF090D0B))) {
+                    if (currentTrack != null && !showPlayer) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(15.dp)).background(Color(0xFF26372B)).clickable { showPlayer = true }.padding(horizontal = 9.dp, vertical = 7.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                AlbumArtwork(currentTrack.artworkUri, Modifier.size(42.dp).clip(RoundedCornerShape(8.dp)), artworkData = currentTrack.artworkData)
+                                Spacer(Modifier.width(9.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(currentTrack.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+                                    Text(currentTrack.artist, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                IconButton(onClick = { if (playing) controller?.pause() else controller?.play() }) { Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = "Play or pause") }
+                                IconButton(onClick = { controller?.seekToNextMediaItem() }) { Icon(Icons.Filled.SkipNext, contentDescription = "Next") }
+                            }
+                            LinearProgressIndicator(
+                                progress = { if (duration > 0L) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f },
+                                modifier = Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(2.dp)),
+                                color = Color(0xFF1ED760),
+                                trackColor = Color(0xFF314037)
                             )
-                        )
+                        }
+                    }
+                    NavigationBar(containerColor = Color(0xFF111713)) {
+                        listOf(
+                            Triple("Songs", Icons.Filled.LibraryMusic, "Songs"),
+                            Triple("Albums", Icons.Filled.Album, "Albums"),
+                            Triple("Artists", Icons.Filled.Person, "Artists"),
+                            Triple("Favorites", Icons.Filled.Favorite, "Favorites"),
+                            Triple("Recent", Icons.Filled.Repeat, "Recent"),
+                            Triple("Playlists", Icons.Filled.LibraryMusic, "Playlists")
+                        ).forEach { item ->
+                            NavigationBarItem(
+                                selected = tab == item.first,
+                                onClick = { tab = item.first; selectedGroup = null },
+                                icon = { Icon(item.second, contentDescription = item.third) },
+                                label = { Text(item.third) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Color(0xFFE7DDF0),
+                                    selectedTextColor = Color(0xFFE7DDF0),
+                                    indicatorColor = Color(0xFF51445D),
+                                    unselectedIconColor = Color(0xFFC9C3CF),
+                                    unselectedTextColor = Color(0xFFC9C3CF)
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -851,29 +873,6 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         }
                     }
                 }
-                }
-                if (currentTrack != null && !showPlayer) {
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF26372B))
-                            .clickable { showPlayer = true }.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AlbumArtwork(currentTrack.artworkUri, Modifier.size(48.dp).clip(RoundedCornerShape(9.dp)), artworkData = currentTrack.artworkData)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                            Text(currentTrack.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
-                            Text(currentTrack.artist, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        IconButton(onClick = { if (playing) controller?.pause() else controller?.play() }) { Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = "Play or pause") }
-                        IconButton(onClick = { controller?.seekToNextMediaItem() }) { Icon(Icons.Filled.SkipNext, contentDescription = "Next") }
-                    }
-                    LinearProgressIndicator(
-                        progress = { if (duration > 0L) (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f },
-                        modifier = Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(2.dp)),
-                        color = Color(0xFF1ED760),
-                        trackColor = Color(0xFF314037)
-                    )
-                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
