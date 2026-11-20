@@ -974,11 +974,24 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                     }
                                     DropdownMenu(
                                         expanded = songMenuExpanded && songMenuTrack?.id == track.id,
-                                        onDismissRequest = { songMenuExpanded = false; songMenuTrack = null }
+                                        onDismissRequest = { songMenuExpanded = false; songMenuTrack = null },
+                                        modifier = Modifier.background(panelColor, RoundedCornerShape(18.dp))
                                     ) {
-                                        DropdownMenuItem(text = { Text("Play now") }, onClick = { playList(filtered, track); songMenuExpanded = false; songMenuTrack = null })
-                                        DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { trackToAdd = track; songMenuExpanded = false; songMenuTrack = null })
-                                        DropdownMenuItem(text = { Text(if (favorites.contains(track.id.toString())) "Remove from favorites" else "Add to favorites") }, onClick = { toggleFavorite(track); songMenuExpanded = false; songMenuTrack = null })
+                                        DropdownMenuItem(
+                                            text = { Text("Play now", color = mainText) },
+                                            leadingIcon = { Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = accentColor) },
+                                            onClick = { playList(filtered, track); songMenuExpanded = false; songMenuTrack = null }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Add to playlist", color = mainText) },
+                                            leadingIcon = { Icon(Icons.Filled.LibraryMusic, contentDescription = null, tint = accentColor) },
+                                            onClick = { trackToAdd = track; songMenuExpanded = false; songMenuTrack = null }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(if (favorites.contains(track.id.toString())) "Remove from favorites" else "Add to favorites", color = mainText) },
+                                            leadingIcon = { Icon(Icons.Filled.Favorite, contentDescription = null, tint = accentColor) },
+                                            onClick = { toggleFavorite(track); songMenuExpanded = false; songMenuTrack = null }
+                                        )
                                     }
                                 }
                             }
@@ -1067,7 +1080,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(20.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { showLyrics = false }) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back") }
-                            Text("LYRICS  •  " + currentTrack.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("LYRICS  •  " + currentTrack.title, color = mainText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         if (lines.isEmpty()) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1091,7 +1104,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                 val text = lines[i].second
                                 if (i == active) Box {
                                     Text(text, color = mutedText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                    Text(text, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.drawWithContent { clipRect(right = size.width * fill) { this@drawWithContent.drawContent() } })
+                                    Text(text, color = mainText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.drawWithContent { clipRect(right = size.width * fill) { this@drawWithContent.drawContent() } })
                                 } else Text(text, color = if (i < active) mutedText else mutedText, style = MaterialTheme.typography.titleLarge)
                             }
                         }
