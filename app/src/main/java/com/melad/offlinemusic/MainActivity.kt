@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -30,6 +31,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -242,17 +246,85 @@ private fun readTrackLyrics(context: Context, file: DocumentFile, trackTitle: St
         }.getOrNull()
         if (!embedded.isNullOrBlank()) return embedded
     }
-    val base = file.name.orEmpty().substringBeforeLast('.', file.name.orEmpty())
-    fun normalizeLyricsName(value: String): String = value.lowercase().filter { it.isLetterOrDigit() }
-    val acceptedNames = setOf(normalizeLyricsName(base), normalizeLyricsName(trackTitle.orEmpty())).filter { it.isNotBlank() }.toSet()
-    val sibling = runCatching { file.parentFile?.listFiles()?.firstOrNull { candidate ->
-        val candidateName = candidate.name.orEmpty()
-        val extension = candidateName.substringAfterLast('.', "").lowercase()
-        extension in setOf("lrc", "txt") &&
-            normalizeLyricsName(candidateName.substringBeforeLast('.', candidateName)) in acceptedNames
-    } }.getOrNull()
-    return runCatching { sibling?.let { context.contentResolver.openInputStream(it.uri)?.bufferedReader()?.use { reader -> reader.readText() } } }.getOrNull()
+    return null
 }
+
+private fun normalizeLyricsName(value: String): String =
+    value.lowercase().filter { it.isLetterOrDigit() }
+
+private fun readTextFile(context: Context, uri: Uri): String? = runCatching {
+    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@runCatching null
+    when {
+        bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte() ->
+            String(bytes, Charsets.UTF_16)
+        bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte() ->
+            String(bytes, Charsets.UTF_16)
+        bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte() ->
+            String(bytes, Charsets.UTF_8).removePrefix("\uFEFF")
+        else -> {
+            val utf8 = String(bytes, Charsets.UTF_8)
+            if ('\uFFFD' in utf8) String(bytes, java.nio.charset.Charset.forName("windows-1256")) else utf8
+        }
+    }.trim()
+}.getOrNull()
+
+private fun findMatchingLyrics(
+    context: Context,
+    rootUri: Uri,
+    targetUri: Uri,
+    title: String,
+    artist: String
+): String? {
+    val root = runCatching { DocumentFile.fromTreeUri(context, rootUri) }.getOrNull() ?: return null
+    val titleKey = normalizeLyricsName(title)
+    val artistKey = normalizeLyricsName(artist)
+    val audioName = runCatching {
+        findTrackDocument(context, rootUri, targetUri)?.name.orEmpty().substringBeforeLast('.')
+    }.getOrDefault("")
+    val audioKey = normalizeLyricsName(audioName)
+    val accepted = setOf(
+        titleKey, audioKey, artistKey + titleKey, titleKey + artistKey,
+        normalizeLyricsName("$artist - $title"), normalizeLyricsName("$title - $artist")
+    ).filter { it.isNotBlank() }.toSet()
+
+    val pending = ArrayDeque<DocumentFile>()
+    pending.add(root)
+    while (pending.isNotEmpty()) {
+        val folder = pending.removeFirst()
+        val children = runCatching { folder.listFiles().toList() }.getOrDefault(emptyList())
+        if (children.any { it.uri == targetUri }) {
+            val match = children.firstOrNull { candidate ->
+                if (!candidate.isFile) return@firstOrNull false
+                val name = candidate.name.orEmpty()
+                val extension = name.substringAfterLast('.', "").lowercase()
+                extension in setOf("lrc", "txt") &&
+                    normalizeLyricsName(name.substringBeforeLast('.', name)) in accepted
+            }
+            if (match != null) return readTextFile(context, match.uri)?.takeIf { it.isNotBlank() }
+        }
+        children.filter { it.isDirectory }.forEach(pending::add)
+    }
+    return null
+}
+
+private fun parseLyricsLines(raw: String): List<Pair<Long?, String>> =
+    raw.lineSequence().flatMap { line ->
+        val timestamps = Regex("\\[(\\d{1,2}):(\\d{2})(?:[.:](\\d{1,3}))?]").findAll(line).toList()
+        if (timestamps.isEmpty()) {
+            val clean = line.trim()
+            if (clean.isBlank() || Regex("^\\[[a-zA-Z]{1,3}:.*]").matches(clean)) emptyList()
+            else listOf(null to clean)
+        } else {
+            val lyricText = line.substringAfterLast(']').trim()
+            if (lyricText.isBlank()) emptyList()
+            else timestamps.map { match ->
+                val millis = match.groupValues[1].toLong() * 60000L +
+                    match.groupValues[2].toLong() * 1000L +
+                    (match.groupValues[3].padEnd(3, '0').take(3).toIntOrNull() ?: 0)
+                millis to lyricText
+            }
+        }
+    }.toList()
 
 private fun findTrackDocument(context: Context, rootUri: Uri, targetUri: Uri): DocumentFile? {
     val root = runCatching { DocumentFile.fromTreeUri(context, rootUri) }.getOrNull() ?: return null
@@ -420,6 +492,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
     var showLyrics by remember { mutableStateOf(false) }
     var showPlayerMenu by remember { mutableStateOf(false) }
     var darkMode by remember { mutableStateOf(prefs.getBoolean("dark_mode", false)) }
+    var lyricsImportError by remember { mutableStateOf<String?>(null) }
     var songMenuTrack by remember { mutableStateOf<Track?>(null) }
     var songMenuExpanded by remember { mutableStateOf(false) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
@@ -526,26 +599,35 @@ private fun OfflineMusicApp(controller: MediaController?) {
     val currentTrack = tracks.firstOrNull { it.id.toString() == currentId }
     val lyricsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null && currentTrack != null) {
-            val imported = runCatching {
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-            }.getOrNull()
+            val displayName = runCatching {
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
+                }.orEmpty()
+            }.getOrDefault("")
+            val extension = displayName.substringAfterLast('.', "").lowercase()
+            val mime = context.contentResolver.getType(uri).orEmpty()
+            val supported = extension in setOf("lrc", "txt") || mime.startsWith("text/")
+            val imported = if (supported) readTextFile(context, uri) else null
             if (!imported.isNullOrBlank()) {
-                tracks = tracks.map { if (it.id == currentTrack.id) it.copy(lyrics = imported) else it }
+                val updatedTracks = tracks.map { if (it.id == currentTrack.id) it.copy(lyrics = imported) else it }
+                tracks = updatedTracks
                 folderUri?.let { selectedFolder ->
-                    val snapshot = tracks
-                    scope.launch(Dispatchers.IO) { saveTrackCache(context, selectedFolder, snapshot) }
+                    scope.launch(Dispatchers.IO) { saveTrackCache(context, selectedFolder, updatedTracks) }
                 }
+                lyricsImportError = null
                 showLyrics = true
+            } else {
+                lyricsImportError = if (!supported) "Choose an .LRC or .TXT lyrics file." else "This file is empty or could not be read."
             }
         }
     }
-    val pageBackground = if (darkMode) Color(0xFF11121A) else Color(0xFFF5F3F0)
+    val pageBackground = if (darkMode) Color(0xFF11121A) else Color(0xFFF3F5FA)
     val panelColor = if (darkMode) Color(0xFF1D1F2B) else Color(0xFFFFFFFF)
-    val panelAlt = if (darkMode) Color(0xFF292B39) else Color(0xFFECEAF3)
-    val accentColor = if (darkMode) Color(0xFFB6A7FF) else Color(0xFF6558B5)
-    val accentSoft = if (darkMode) Color(0xFF373149) else Color(0xFFDCD7F4)
-    val mainText = if (darkMode) Color(0xFFF5F3FA) else Color(0xFF252331)
-    val mutedText = if (darkMode) Color(0xFFB8B6C4) else Color(0xFF777483)
+    val panelAlt = if (darkMode) Color(0xFF292B39) else Color(0xFFE9EDF6)
+    val accentColor = if (darkMode) Color(0xFFAFBCFF) else Color(0xFF5369D9)
+    val accentSoft = if (darkMode) Color(0xFF303A58) else Color(0xFFDDE4FF)
+    val mainText = if (darkMode) Color(0xFFF5F3FA) else Color(0xFF202638)
+    val mutedText = if (darkMode) Color(0xFFB8B6C4) else Color(0xFF737D91)
     LaunchedEffect(showLyrics, currentTrack?.id) {
         val selected = currentTrack
         if (showLyrics && selected != null && selected.lyrics.isNullOrBlank()) {
@@ -706,11 +788,21 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     if (pageTab == "Settings") {
                     Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(18.dp))
-                    Card(colors = CardDefaults.cardColors(containerColor = panelColor), shape = RoundedCornerShape(22.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = panelColor),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(accentSoft), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.Settings, contentDescription = null, tint = accentColor, modifier = Modifier.size(24.dp))
+                            }
+                            Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("Appearance", fontWeight = FontWeight.Bold)
-                                Text(if (darkMode) "Dark mode is on" else "Light mode is on", color = mutedText, style = MaterialTheme.typography.bodySmall)
+                                Text("Appearance", fontWeight = FontWeight.Bold, color = mainText)
+                                Text(if (darkMode) "Dark Mode enabled" else "Light Mode enabled", color = mutedText, style = MaterialTheme.typography.bodySmall)
                             }
                             Switch(checked = darkMode, onCheckedChange = {
                                 darkMode = it
@@ -719,35 +811,27 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    Card(colors = CardDefaults.cardColors(containerColor = panelColor), shape = RoundedCornerShape(22.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = accentColor, modifier = Modifier.size(28.dp))
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text("Music folder", fontWeight = FontWeight.Bold)
-                                    Text("Only scan songs inside this folder", color = mutedText, style = MaterialTheme.typography.bodySmall)
-                                }
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { folderPicker.launch(folderUri) },
+                        colors = CardDefaults.cardColors(containerColor = panelColor),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(accentSoft), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = accentColor, modifier = Modifier.size(24.dp))
                             }
-                            Spacer(Modifier.height(14.dp))
-                            Text(
-                                if (folderUri == null) "No folder selected yet" else "A music folder is selected. The app scans audio files inside it and its subfolders only.",
-                                color = mutedText,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Button(onClick = { folderPicker.launch(folderUri) }, modifier = Modifier.fillMaxWidth()) {
-                                Icon(Icons.Filled.FolderOpen, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (folderUri == null) "Choose music folder" else "Change music folder")
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Music folder", fontWeight = FontWeight.Bold, color = mainText)
+                                Text(
+                                    folderUri?.let { DocumentFile.fromTreeUri(context, it)?.name } ?: "Choose a different music folder",
+                                    color = mutedText, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
                             }
-                            if (folderUri != null) {
-                                TextButton(onClick = {
-                                    folderUri = null
-                                    prefs.edit().remove("music_folder_uri").apply()
-                                    tracks = emptyList()
-                                }, modifier = Modifier.fillMaxWidth()) { Text("Clear selected folder") }
-                            }
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "Choose folder", tint = mutedText, modifier = Modifier.graphicsLayer { rotationZ = 180f })
                         }
                     }
                     Spacer(Modifier.height(14.dp))
@@ -777,9 +861,11 @@ private fun OfflineMusicApp(controller: MediaController?) {
                 } else if (scanning && tracks.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = accentColor)
-                            Spacer(Modifier.height(12.dp))
-                            Text("Scanning your music folder…", color = mutedText)
+                            MusicLoadingIndicator(accentColor, accentSoft)
+                            Spacer(Modifier.height(22.dp))
+                            Text("Preparing your music", color = mainText, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(5.dp))
+                            Text("Finding your tracks and album details…", color = mutedText, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 } else if (tracks.isEmpty()) {
@@ -1063,13 +1149,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
         }
 
         if (showLyrics && currentTrack != null) {
-            val lines = currentTrack.lyrics.orEmpty().lines().mapNotNull { line ->
-                val m = Regex("^\\s*\\[(\\d{1,2}):(\\d{2})(?:[.:](\\d{1,3}))?]\\s*(.*)$").find(line)
-                if (m != null) {
-                    val ms = m.groupValues[1].toLong() * 60000L + m.groupValues[2].toLong() * 1000L + (m.groupValues[3].padEnd(3, '0').take(3).toIntOrNull() ?: 0)
-                    ms to m.groupValues[4]
-                } else if (line.isNotBlank()) null to line.trim() else null
-            }
+            val lines = parseLyricsLines(currentTrack.lyrics.orEmpty())
             val timed = lines.any { it.first != null }
             val active = if (timed) lines.indexOfLast { it.first != null && it.first!! <= position }.coerceAtLeast(0) else if (lines.isNotEmpty() && duration > 0) ((position.toFloat()/duration)*lines.size).toInt().coerceIn(0,lines.lastIndex) else 0
             val from = lines.getOrNull(active)?.first ?: 0L
@@ -1089,9 +1169,10 @@ private fun OfflineMusicApp(controller: MediaController?) {
                                     Spacer(Modifier.height(12.dp))
                                     Text("No lyrics found", color = mainText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
                                     Spacer(Modifier.height(6.dp))
-                                    Text("You can add a lyrics file from your phone.", color = mutedText)
+                                    Text("Add an LRC or TXT file from your phone.", color = mutedText)
+                                    lyricsImportError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                                     Spacer(Modifier.height(18.dp))
-                                    Button(onClick = { lyricsPicker.launch(arrayOf("text/*", "application/octet-stream")) }, shape = RoundedCornerShape(16.dp)) {
+                                    Button(onClick = { lyricsPicker.launch(arrayOf("*/*")) }, shape = RoundedCornerShape(16.dp)) {
                                         Icon(Icons.Filled.Add, contentDescription = null)
                                         Spacer(Modifier.width(8.dp))
                                         Text("Add local lyrics")
@@ -1191,6 +1272,41 @@ private fun OfflineMusicApp(controller: MediaController?) {
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+private fun MusicLoadingIndicator(accent: Color, softAccent: Color) {
+    val transition = rememberInfiniteTransition(label = "musicLoading")
+    val heights = (0 until 5).map { index ->
+        transition.animateFloat(
+            initialValue = 13f,
+            targetValue = 38f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(560, delayMillis = index * 95, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "musicBar$index"
+        )
+    }
+    Box(
+        Modifier.size(width = 142.dp, height = 94.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(softAccent.copy(alpha = 0.58f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            heights.forEachIndexed { index, height ->
+                Box(
+                    Modifier.width(8.dp).height(height.value.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (index == 2) accent else accent.copy(alpha = 0.72f))
+                )
+            }
         }
     }
 }
