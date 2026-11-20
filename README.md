@@ -1,5 +1,7 @@
 # Sonora Music
 
+Project status: Android build validation for the current app changes.
+
 **Store listing title suggestion:** Sonora Music: Music Player
 
 An offline music player for Android. Browse and play music stored on your device, organize playlists, and enjoy your library with a clean, lightweight interface.
