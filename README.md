@@ -1,13 +1,24 @@
-# Offline Music
+# Sonora Music
 
-An Android offline-first music player for audio files stored on the device.
+**Store listing title suggestion:** Sonora Music: Music Player
+
+An offline music player for Android. Browse and play music stored on your device, organize playlists, and enjoy your library with a clean, lightweight interface.
+
+## Google Play listing draft
+
+**Short description:** Offline music player to play songs, browse albums and artists, and create playlists.
+
+**Search phrases to include naturally in the full description:** music player, offline music player, local music player, audio player, song playlists, music library, album browser, artist browser, lyrics.
+
+> Search phrases can improve relevance, but Google Play decides search ranking. The title and description do not guarantee a particular position.
 
 ## Features
-- Reads local audio through Android MediaStore after permission is granted.
-- Songs, albums, artists, search, and favorites.
+- Browse local songs, albums, and artists.
+- Search the music library and manage favorites.
+- Create playlists and add selected songs.
 - Background playback through Media3 MediaSessionService.
 - Lock-screen and notification media controls supplied by Android Media3.
-- No account, server, or network permission.
+- No account or server required.
 
 ## Build
 Open with Android Studio or run `gradle assembleDebug` with JDK 17 and Android SDK 35.
