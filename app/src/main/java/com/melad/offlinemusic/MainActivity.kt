@@ -302,7 +302,7 @@ private fun findMatchingLyrics(
             }
             if (match != null) return readTextFile(context, match.uri)?.takeIf { it.isNotBlank() }
         }
-        children.filter { it.isDirectory }.forEach(pending::add)
+        children.filter { it.isDirectory }.forEach { pending.add(it) }
     }
     return null
 }
