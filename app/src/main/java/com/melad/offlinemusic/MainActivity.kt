@@ -1110,6 +1110,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                         }
                     }
                 } else {
+                    Column(Modifier.fillMaxSize()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(pageTab, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
@@ -1120,8 +1121,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                     }
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(
-                        state = songsListState,
-                        modifier = Modifier.pointerInput(refreshRequest, scanning) {
+                        modifier = Modifier.weight(1f).pointerInput(refreshRequest, scanning) {
                             var dragDistance = 0f
                             detectVerticalDragGestures(
                                 onVerticalDrag = { change, amount ->
@@ -1192,6 +1192,7 @@ private fun OfflineMusicApp(controller: MediaController?) {
                             }
                             }
                         }
+                    }
                     }
                 }
                 }
