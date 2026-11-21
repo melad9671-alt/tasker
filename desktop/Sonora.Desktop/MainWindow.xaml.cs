@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Forms = System.Windows.Forms;
@@ -47,24 +48,45 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == Forms.DialogResult.OK) LoadFolder(dialog.SelectedPath);
     }
 
-    private void LoadFolder(string folder)
+    private async void LoadFolder(string folder)
     {
         musicFolder = folder;
         FolderLabel.Text = folder;
-        allTracks.Clear();
-        var files = Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
-            .Where(p => new[] { ".mp3", ".wav", ".wma", ".m4a", ".aac", ".flac" }.Contains(System.IO.Path.GetExtension(p), StringComparer.OrdinalIgnoreCase))
-            .OrderBy(p => System.IO.Path.GetFileNameWithoutExtension(p), StringComparer.CurrentCultureIgnoreCase).ToList();
-        var number = 1;
-        foreach (var file in files)
+        LoadingPanel.Visibility = Visibility.Visible;
+        FolderHint.Text = "Scanning your music folder…";
+        try
         {
-            var name = System.IO.Path.GetFileNameWithoutExtension(file);
-            var parts = name.Split(" - ", 2, StringSplitOptions.TrimEntries);
-            allTracks.Add(new Track { Number = number++, Title = parts.Length > 1 ? parts[1] : name, Artist = parts.Length > 1 ? parts[0] : "Unknown artist", Album = "—", Path = file, Favorite = favorites.Contains(file) });
+            await Task.Yield();
+            var files = await Task.Run(() => Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
+                .Where(p => new[] { ".mp3", ".wav", ".wma", ".m4a", ".aac", ".flac" }.Contains(System.IO.Path.GetExtension(p), StringComparer.OrdinalIgnoreCase))
+                .OrderBy(p => System.IO.Path.GetFileNameWithoutExtension(p), StringComparer.CurrentCultureIgnoreCase).ToList());
+            allTracks.Clear();
+            var number = 1;
+            foreach (var file in files)
+            {
+                var name = System.IO.Path.GetFileNameWithoutExtension(file);
+                var parts = name.Split(" - ", 2, StringSplitOptions.TrimEntries);
+                allTracks.Add(new Track { Number = number++, Title = parts.Length > 1 ? parts[1] : name, Artist = parts.Length > 1 ? parts[0] : "Unknown artist", Album = "—", Path = file, Favorite = favorites.Contains(file) });
+            }
+            ApplyFilter();
+            TrackCount.Text = $"{allTracks.Count} TRACKS";
+            FolderHint.Text = allTracks.Count == 0 ? "No supported audio files found" : "Your offline library is ready";
         }
-        ApplyFilter();
-        TrackCount.Text = $"{allTracks.Count} TRACKS";
-        FolderHint.Text = allTracks.Count == 0 ? "No supported audio files found" : "Your offline library is ready";
+        catch (Exception ex)
+        {
+            FolderHint.Text = "Couldn't scan this folder";
+            System.Windows.MessageBox.Show($"Sonora couldn't read this music folder.\\n{ex.Message}", "Sonora Music", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { LoadingPanel.Visibility = Visibility.Collapsed; }
+    }
+
+    private void LoadingMark_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Image image && image.RenderTransform is RotateTransform rotate)
+        {
+            var spin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.8)) { RepeatBehavior = RepeatBehavior.Forever };
+            rotate.BeginAnimation(RotateTransform.AngleProperty, spin);
+        }
     }
 
     private void ApplyFilter()
