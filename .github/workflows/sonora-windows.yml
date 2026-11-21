@@ -1,0 +1,26 @@
+name: Sonora Music Windows
+on:
+  push:
+    branches: [sonora-windows-desktop]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/sonora-windows.yml'
+  workflow_dispatch:
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Windows app
+        run: dotnet publish desktop/Sonora.Desktop/Sonora.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+      - name: Upload installer-ready app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonora-Music-Windows-x64
+          path: publish/**
+          if-no-files-found: error
+          retention-days: 14
