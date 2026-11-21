@@ -8,5 +8,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Sonora Music</AssemblyName>
     <RootNamespace>Sonora.Desktop</RootNamespace>
+    <ApplicationIcon>Sonora.ico</ApplicationIcon>
   </PropertyGroup>
 </Project>
