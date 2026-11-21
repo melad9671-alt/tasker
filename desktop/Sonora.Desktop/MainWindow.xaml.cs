@@ -82,7 +82,7 @@ public partial class MainWindow : Window
 
     private void LoadingMark_Loaded(object sender, RoutedEventArgs e)
     {
-        if (sender is Image image && image.RenderTransform is RotateTransform rotate)
+        if (sender is System.Windows.Controls.Image image && image.RenderTransform is RotateTransform rotate)
         {
             var spin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.8)) { RepeatBehavior = RepeatBehavior.Forever };
             rotate.BeginAnimation(RotateTransform.AngleProperty, spin);
@@ -156,7 +156,7 @@ public partial class MainWindow : Window
         button.Content = new System.Windows.Shapes.Path
         {
             Data = Geometry.Parse("M12,1 L15.3,8 L23,9 L17.5,14.4 L18.8,22 L12,18.4 L5.2,22 L6.5,14.4 L1,9 L8.7,8 Z"),
-            Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(track.Favorite ? "#F5C451" : "#19CDB6")),
+            Fill = #NO_MATCH "#F5C451" : "#19CDB6")),
             Width = 16, Height = 16, Stretch = Stretch.Uniform
         };
         if (currentPage == "Favorites") ApplyFilter();
@@ -165,7 +165,7 @@ public partial class MainWindow : Window
     {
         dark = !dark;
         var palette = System.Windows.Application.Current.Resources;
-        void Set(string key, string color) => palette[key] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        void Set(string key, string color) => palette[key] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
         Set("WindowBackground", dark ? "#0B1715" : "#F3F8F6");
         Set("SidebarBackground", dark ? "#101F1C" : "#E7F0EC");
         Set("SurfaceBackground", dark ? "#101F1C" : "#FFFFFF");
@@ -176,7 +176,7 @@ public partial class MainWindow : Window
         Set("MutedText", dark ? "#78948C" : "#71877F");
         Set("HoverSurface", dark ? "#1B302B" : "#DCEAE4");
         Set("SelectedSurface", dark ? "#1B3932" : "#CFE7DD");
-        Background = (Brush)palette["WindowBackground"];
+        Background = (System.Windows.Media.Brush)palette["WindowBackground"];
         ThemeButton.Content = dark ? "☀" : "☾";
     }
     private void Settings_Click(object sender, RoutedEventArgs e) =>
