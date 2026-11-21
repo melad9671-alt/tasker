@@ -28,3 +28,6 @@ The GitHub Actions workflow builds a debug APK and uploads it as an artifact.
 
 
 UI layout fix: keep the Songs header and track count above the scrollable list; list now receives remaining vertical space.
+
+
+Desktop visual refinement: Sonora vector mark is now used as the WPF window icon and sidebar brand, with refined hover/pressed button states and a consistent favorite-star control. Windows desktop theme styling is being refined.
