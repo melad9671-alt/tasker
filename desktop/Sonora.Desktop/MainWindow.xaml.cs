@@ -156,7 +156,7 @@ public partial class MainWindow : Window
         button.Content = new System.Windows.Shapes.Path
         {
             Data = Geometry.Parse("M12,1 L15.3,8 L23,9 L17.5,14.4 L18.8,22 L12,18.4 L5.2,22 L6.5,14.4 L1,9 L8.7,8 Z"),
-            Fill = #NO_MATCH "#F5C451" : "#19CDB6")),
+            Fill = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(track.Favorite ? "#F5C451" : "#19CDB6")),
             Width = 16, Height = 16, Stretch = Stretch.Uniform
         };
         if (currentPage == "Favorites") ApplyFilter();
