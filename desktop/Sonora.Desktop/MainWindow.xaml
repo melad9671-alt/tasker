@@ -73,5 +73,17 @@
         <TextBlock Grid.Column="2" Text="SONORA  •  OFFLINE" Foreground="#78958C" FontSize="10" VerticalAlignment="Center" HorizontalAlignment="Right"/>
       </Grid>
     </Border>
+    <Border x:Name="LoadingPanel" Grid.RowSpan="2" Grid.ColumnSpan="2" Background="#D90B1715" Visibility="Collapsed" Panel.ZIndex="20">
+      <Border Width="320" Padding="28" CornerRadius="22" Background="#142A26" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel HorizontalAlignment="Center">
+          <Image Source="{StaticResource SonoraMark}" Width="58" Height="58" RenderTransformOrigin="0.5,0.5" Loaded="LoadingMark_Loaded">
+            <Image.RenderTransform><RotateTransform/></Image.RenderTransform>
+          </Image>
+          <TextBlock Text="Preparing your music" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,18,0,5"/>
+          <TextBlock Text="Scanning your offline library…" Foreground="#91A9A2" FontSize="12" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+          <ProgressBar Height="4" Width="220" IsIndeterminate="True" Foreground="#19CDB6" Background="#29443E"/>
+        </StackPanel>
+      </Border>
+    </Border>
   </Grid>
 </Window>
