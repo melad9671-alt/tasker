@@ -87,7 +87,7 @@ public partial class MainWindow : Window
     private void AlbumsNav_Click(object sender, RoutedEventArgs e) => ShowPage("Albums");
     private void ArtistsNav_Click(object sender, RoutedEventArgs e) => ShowPage("Artists");
     private void FavoritesNav_Click(object sender, RoutedEventArgs e) => ShowPage("Favorites");
-    private void PlaylistsNav_Click(object sender, RoutedEventArgs e) => MessageBox.Show("Playlist management is coming in the next desktop milestone.", "Sonora Music", MessageBoxButton.OK, MessageBoxImage.Information);
+    private void PlaylistsNav_Click(object sender, RoutedEventArgs e) => System.Windows.MessageBox.Show("Playlist management is coming in the next desktop milestone.", "Sonora Music", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private void TrackList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -104,7 +104,7 @@ public partial class MainWindow : Window
             NowArtist.Text = track.Artist;
             PlayButton.Content = "Ⅱ";
         }
-        catch (Exception ex) { MessageBox.Show($"Couldn't play this file.\n{ex.Message}", "Sonora Music"); }
+        catch (Exception ex) { System.Windows.MessageBox.Show($"Couldn't play this file.\n{ex.Message}", "Sonora Music"); }
     }
     private void Play_Click(object sender, RoutedEventArgs e)
     {
@@ -126,7 +126,7 @@ public partial class MainWindow : Window
     }
     private void Favorite_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not Track track) return;
+        if ((sender as System.Windows.Controls.Button)?.Tag is not Track track) return;
         if (!favorites.Add(track.Path)) favorites.Remove(track.Path);
         track.Favorite = favorites.Contains(track.Path);
         if (currentPage == "Favorites") ApplyFilter();
@@ -137,7 +137,7 @@ public partial class MainWindow : Window
         Background = dark ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(11,23,21)) : System.Windows.Media.Brushes.WhiteSmoke;
     }
     private void Settings_Click(object sender, RoutedEventArgs e) =>
-        MessageBox.Show("Choose your music folder from the button at the bottom left. More appearance controls will be added here.", "Sonora Music");
+        System.Windows.MessageBox.Show("Choose your music folder from the button at the bottom left. More appearance controls will be added here.", "Sonora Music");
     private void UpdateProgress()
     {
         if (!player.NaturalDuration.HasTimeSpan || player.NaturalDuration.TimeSpan.TotalSeconds <= 0) return;
