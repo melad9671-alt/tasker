@@ -37,7 +37,7 @@ public partial class MainWindow : Window
         TrackList.ItemsSource = visibleTracks;
         timer.Tick += (_, _) => UpdateProgress();
         timer.Start();
-        player.MediaEnded += (_, _) => Dispatcher.Invoke(Next_Click);
+        player.MediaEnded += (_, _) => Dispatcher.Invoke(() => Next_Click(this, new RoutedEventArgs()));
         Loaded += (_, _) => { };
     }
 
